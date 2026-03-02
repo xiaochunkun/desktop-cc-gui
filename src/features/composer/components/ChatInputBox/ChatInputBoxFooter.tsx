@@ -1,5 +1,13 @@
 import type { TFunction } from 'i18next';
-import type { DropdownItemData, DropdownPosition, PermissionMode, ProviderId, ReasoningEffort, SelectedAgent } from './types.js';
+import type {
+  AccountRateLimitsInfo,
+  DropdownItemData,
+  DropdownPosition,
+  PermissionMode,
+  ProviderId,
+  ReasoningEffort,
+  SelectedAgent,
+} from './types.js';
 import type { TooltipState } from './hooks/useTooltip.js';
 import { ButtonArea } from './ButtonArea.js';
 import { CompletionDropdown } from './Dropdown/index.js';
@@ -27,6 +35,11 @@ export function ChatInputBoxFooter({
   providerAvailability,
   providerVersions,
   reasoningEffort,
+  accountRateLimits,
+  usageShowRemaining,
+  onRefreshAccountRateLimits,
+  selectedCollaborationModeId,
+  onSelectCollaborationMode,
   onSubmit,
   onStop,
   onModeSelect,
@@ -62,6 +75,11 @@ export function ChatInputBoxFooter({
   providerAvailability?: Partial<Record<ProviderId, boolean>>;
   providerVersions?: Partial<Record<ProviderId, string | null>>;
   reasoningEffort: ReasoningEffort;
+  accountRateLimits?: AccountRateLimitsInfo | null;
+  usageShowRemaining?: boolean;
+  onRefreshAccountRateLimits?: () => Promise<void> | void;
+  selectedCollaborationModeId?: string | null;
+  onSelectCollaborationMode?: (id: string | null) => void;
   onSubmit: () => void;
   onStop?: () => void;
   onModeSelect?: (mode: PermissionMode) => void;
@@ -109,6 +127,11 @@ export function ChatInputBoxFooter({
         providerAvailability={providerAvailability}
         providerVersions={providerVersions}
         reasoningEffort={reasoningEffort}
+        accountRateLimits={accountRateLimits}
+        usageShowRemaining={usageShowRemaining}
+        onRefreshAccountRateLimits={onRefreshAccountRateLimits}
+        selectedCollaborationModeId={selectedCollaborationModeId}
+        onSelectCollaborationMode={onSelectCollaborationMode}
         onSubmit={onSubmit}
         onStop={onStop}
         onModeSelect={onModeSelect}

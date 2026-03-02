@@ -84,6 +84,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
       usageUsedTokens,
       usageMaxTokens,
       showUsage = true,
+      accountRateLimits,
+      usageShowRemaining = false,
+      onRefreshAccountRateLimits,
+      selectedCollaborationModeId,
+      onSelectCollaborationMode,
       attachments: externalAttachments,
       placeholder = '', // Will be passed from parent via t('chat.inputPlaceholder')
       disabled = false,
@@ -889,6 +894,11 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
               providerAvailability={providerAvailability}
               providerVersions={providerVersions}
               reasoningEffort={reasoningEffort}
+              accountRateLimits={accountRateLimits}
+              usageShowRemaining={usageShowRemaining}
+              onRefreshAccountRateLimits={onRefreshAccountRateLimits}
+              selectedCollaborationModeId={selectedCollaborationModeId}
+              onSelectCollaborationMode={onSelectCollaborationMode}
               onSubmit={handleSubmit}
               onStop={onStop}
               onModeSelect={handleModeSelect}

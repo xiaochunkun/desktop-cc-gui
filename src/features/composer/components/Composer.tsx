@@ -397,9 +397,9 @@ export const Composer = memo(function Composer({
   files,
   directories = [],
   contextUsage = null,
-  accountRateLimits: _accountRateLimits = null,
-  usageShowRemaining: _usageShowRemaining = false,
-  onRefreshAccountRateLimits: _onRefreshAccountRateLimits,
+  accountRateLimits = null,
+  usageShowRemaining = false,
+  onRefreshAccountRateLimits,
   queuedMessages = [],
   onDeleteQueued,
   sendLabel: _sendLabel = "Send",
@@ -1413,6 +1413,11 @@ export const Composer = memo(function Composer({
           onOpenAgentSettings={onOpenAgentSettings}
           permissionMode={accessModeToPermissionMode(accessMode)}
           onModeSelect={handleModeSelect}
+          selectedCollaborationModeId={_selectedCollaborationModeId}
+          onSelectCollaborationMode={_onSelectCollaborationMode}
+          accountRateLimits={accountRateLimits}
+          usageShowRemaining={usageShowRemaining}
+          onRefreshAccountRateLimits={onRefreshAccountRateLimits}
           hasMessages={items.length > 0}
           onRewind={handleRewind}
           showRewindEntry={false}

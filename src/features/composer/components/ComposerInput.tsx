@@ -10,7 +10,6 @@ import type {
   SyntheticEvent,
 } from "react";
 import type { AutocompleteItem } from "../hooks/useComposerAutocomplete";
-import { formatCollaborationModeLabel } from "../../../utils/collaborationModes";
 import type { AccessMode, EngineType, RateLimitSnapshot, ThreadTokenUsage } from "../../../types";
 import type { OpenCodeAgentOption } from "../../../types";
 import type { EngineDisplayInfo } from "../../engine/hooks/useEngineController";
@@ -38,6 +37,7 @@ import ShieldCheck from "lucide-react/dist/esm/icons/shield-check";
 import Cpu from "lucide-react/dist/esm/icons/cpu";
 import FileIcon from "../../../components/FileIcon";
 import { Select, SelectItem, SelectPopup, SelectTrigger } from "../../../components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { EngineSelector } from "../../engine/components/EngineSelector";
 import { Markdown } from "../../messages/components/Markdown";
 import { useComposerImageDrop } from "../hooks/useComposerImageDrop";
@@ -682,28 +682,14 @@ export function ComposerInput({
   }, []);
 
   const isCodexEngine = selectedEngine === "codex";
-  const collaborationOptionsAvailable = collaborationModes.length > 0;
   const collaborationModeDisabled = disabled;
-  const selectedCollaborationLabel = formatCollaborationModeLabel(
-    collaborationModes.find((m) => m.id === selectedCollaborationModeId)?.label ||
-      selectedCollaborationModeId ||
-      "plan",
-  );
-  const resolvedCollaborationModeId = selectedCollaborationModeId ?? "plan";
-  const collaborationFallbackValue =
-    resolvedCollaborationModeId === "code" ? "code" : "plan";
-  const collaborationSelectValue = collaborationOptionsAvailable
-    ? resolvedCollaborationModeId
-    : collaborationFallbackValue;
-  const collaborationDisplayLabel = resolvedCollaborationModeId === "plan"
-    ? t("composer.collaborationPlanInlineHint")
-    : t("composer.collaborationCodeInlineHint", { mode: selectedCollaborationLabel });
-  const CollaborationModeIcon =
-    resolvedCollaborationModeId === "code"
-      ? Wrench
-      : resolvedCollaborationModeId === "plan"
-        ? Layers3
-        : GitFork;
+  const planModeId = collaborationModes.find((mode) => mode.id === "plan")?.id ?? "plan";
+  const defaultModeId = collaborationModes.find((mode) => mode.id !== planModeId)?.id ?? "code";
+  const resolvedCollaborationModeId = selectedCollaborationModeId ?? planModeId;
+  const isPlanModeEnabled = resolvedCollaborationModeId === planModeId;
+  const collaborationModeBadgeLabel = isPlanModeEnabled
+    ? t("composer.planModeShort")
+    : t("common.default");
   const accessDisplayLabel = accessMode === "read-only"
     ? t("composer.readOnly")
     : accessMode === "current"
@@ -764,13 +750,22 @@ export function ComposerInput({
     showOpenCodeAgentPicker ||
     showOpenCodeVariantPicker;
   const showAccessPicker = Boolean(accessMode && onSelectAccessMode);
-  const showCollaborationPicker = Boolean(isCodexEngine && onSelectCollaborationMode);
+  const showPlanModeToggle = Boolean(isCodexEngine && onSelectCollaborationMode);
   const showEffortPicker = Boolean(selectedEngine !== "claude" && reasoningSupported && onSelectEffort);
   const showOpenCodeDock = Boolean(selectedEngine === "opencode" && openCodeDock);
   const canOpenOpenCodePanelFromModelIndicator = Boolean(
     selectedEngine === "opencode" && onOpenOpenCodePanel,
   );
-  const hasPolicyCluster = showAccessPicker || showCollaborationPicker || showEffortPicker;
+  const hasPolicyCluster = showAccessPicker || showEffortPicker;
+  const handlePlanModeToggle = useCallback(
+    (checked: boolean) => {
+      if (!onSelectCollaborationMode) {
+        return;
+      }
+      onSelectCollaborationMode(checked ? planModeId : defaultModeId);
+    },
+    [defaultModeId, onSelectCollaborationMode, planModeId],
+  );
   const handleOpenCodeModelIndicatorKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
       if (!onOpenOpenCodePanel) {
@@ -858,6 +853,20 @@ export function ComposerInput({
               >
                 <ImagePlus size={14} aria-hidden />
               </button>
+              {showPlanModeToggle && (
+                <label className="composer-plan-mode-toggle">
+                  <span className="composer-plan-mode-toggle-label">
+                    {t("composer.planModeToggle")}
+                  </span>
+                  <Switch
+                    aria-label={t("composer.planModeToggle")}
+                    checked={isPlanModeEnabled}
+                    disabled={collaborationModeDisabled}
+                    onCheckedChange={handlePlanModeToggle}
+                    className="composer-plan-mode-switch"
+                  />
+                </label>
+              )}
             </div>
 
             {hasEngineCluster && (
@@ -1118,68 +1127,6 @@ export function ComposerInput({
                   </div>
                 )}
 
-                {showCollaborationPicker && (
-                  <div className="composer-select-wrap" title={collaborationDisplayLabel}>
-                    <span className="composer-icon" aria-hidden>
-                      <CollaborationModeIcon size={14} />
-                    </span>
-                    <span className="composer-select-value">
-                      {collaborationDisplayLabel}
-                    </span>
-                    <Select
-                      value={collaborationSelectValue}
-                      onValueChange={(value) => {
-                        onSelectCollaborationMode?.(value || null);
-                      }}
-                    >
-                      <SelectTrigger
-                        aria-label={t("composer.collaborationMode")}
-                        className="composer-inline-select-trigger"
-                        disabled={collaborationModeDisabled}
-                        aria-disabled={collaborationModeDisabled}
-                      />
-                      <SelectPopup
-                        side="top"
-                        sideOffset={8}
-                        align="start"
-                        className="composer-inline-select-popup"
-                      >
-                        {collaborationOptionsAvailable ? (
-                          collaborationModes.map((mode) => (
-                            <SelectItem key={mode.id} value={mode.id}>
-                              <span className="composer-inline-select-item">
-                                <Layers3 size={14} aria-hidden />
-                                <span className="composer-inline-select-item-label">
-                                  {formatCollaborationModeLabel(mode.label || mode.id)}
-                                </span>
-                              </span>
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <>
-                            <SelectItem value="code">
-                              <span className="composer-inline-select-item">
-                                <Wrench size={14} aria-hidden />
-                                <span className="composer-inline-select-item-label">
-                                  {t("composer.collaborationCode")}
-                                </span>
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="plan">
-                              <span className="composer-inline-select-item">
-                                <Layers3 size={14} aria-hidden />
-                                <span className="composer-inline-select-item-label">
-                                  {t("composer.collaborationPlan")}
-                                </span>
-                              </span>
-                            </SelectItem>
-                          </>
-                        )}
-                      </SelectPopup>
-                    </Select>
-                  </div>
-                )}
-
                 {showEffortPicker && (
                   <div className="composer-select-wrap" title={selectedEffort || t("composer.effortDefault")}>
                     <span className="composer-icon" aria-hidden>
@@ -1232,6 +1179,19 @@ export function ComposerInput({
           </div>
           
           <div className="composer-input-footer-right">
+            {showPlanModeToggle && (
+              <button
+                type="button"
+                className={`composer-mode-badge${isPlanModeEnabled ? " is-plan" : ""}`}
+                onClick={() => handlePlanModeToggle(!isPlanModeEnabled)}
+                disabled={collaborationModeDisabled}
+                aria-label={t("composer.planModeToggle")}
+                title={t("composer.planModeToggle")}
+              >
+                <GitFork size={12} aria-hidden />
+                <span>{collaborationModeBadgeLabel}</span>
+              </button>
+            )}
             {isCodexEngine && (
               <div
                 className="composer-usage-popover"

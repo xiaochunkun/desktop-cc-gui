@@ -350,6 +350,25 @@
   cursor: not-allowed;
 }
 
+.composer-plan-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.composer-plan-mode-toggle-label {
+  line-height: 1;
+}
+
+.composer-plan-mode-switch {
+  flex: 0 0 auto;
+}
+
 .composer-select-wrap {
   display: inline-flex;
   align-items: center;
@@ -962,6 +981,41 @@
 }
 
 .composer-attachment-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-mode-badge {
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 84%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 88%, transparent);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 0 8px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 520;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.composer-mode-badge:hover {
+  border-color: color-mix(in srgb, var(--border-strong) 72%, transparent);
+  color: var(--text-strong);
+}
+
+.composer-mode-badge.is-plan {
+  border-color: color-mix(in srgb, var(--accent-primary, #2563eb) 58%, transparent);
+  background: color-mix(in srgb, var(--accent-primary, #2563eb) 15%, transparent);
+  color: color-mix(in srgb, var(--accent-primary, #2563eb) 78%, white 22%);
+}
+
+.composer-mode-badge:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -2076,6 +2130,25 @@
 
   .composer-footer-cluster {
     border-radius: 10px;
+  }
+
+  .composer-plan-mode-toggle-label {
+    display: none;
+  }
+
+  .composer-plan-mode-toggle {
+    margin-left: 2px;
+    padding: 0 2px;
+  }
+
+  .composer-mode-badge span {
+    display: none;
+  }
+
+  .composer-mode-badge {
+    width: 24px;
+    padding: 0;
+    justify-content: center;
   }
 }
 

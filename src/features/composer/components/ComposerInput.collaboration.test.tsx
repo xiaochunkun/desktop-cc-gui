@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createRef, type ComponentProps } from "react";
-import { act, fireEvent, render, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ComposerInput } from "./ComposerInput";
 
 function renderComposerInput(overrides: Partial<ComponentProps<typeof ComposerInput>> = {}) {
@@ -36,70 +36,48 @@ function renderComposerInput(overrides: Partial<ComponentProps<typeof ComposerIn
 }
 
 describe("ComposerInput collaboration mode", () => {
-  it("keeps collaboration entry enabled for codex even when feature toggle is off", () => {
+  it("shows plan mode switch for codex engine", () => {
     const view = renderComposerInput({ collaborationModesEnabled: false });
 
-    const selectTrigger = within(view.container).getByLabelText("composer.collaborationMode");
-    expect((selectTrigger as HTMLButtonElement).disabled).toBe(false);
-    expect(within(view.container).getByText("composer.collaborationPlanInlineHint")).toBeTruthy();
+    const modeSwitch = within(view.container).getByRole("switch", {
+      name: "composer.planModeToggle",
+    });
+    expect(modeSwitch).toBeTruthy();
   });
 
-  it("hides collaboration mode entry for non-codex engines", () => {
+  it("hides plan mode switch for non-codex engines", () => {
     const view = renderComposerInput({ selectedEngine: "claude", collaborationModesEnabled: true });
 
-    expect(within(view.container).queryByLabelText("Collaboration mode")).toBeNull();
+    expect(within(view.container).queryByRole("switch", { name: "composer.planModeToggle" })).toBeNull();
   });
 
-  it("renders fallback options when presets are temporarily unavailable", async () => {
+  it("switches from default(code) to plan", () => {
+    const onSelectCollaborationMode = vi.fn();
     const view = renderComposerInput({
-      collaborationModesEnabled: true,
-      collaborationModes: [],
       selectedCollaborationModeId: "code",
+      onSelectCollaborationMode,
     });
 
-    const selectTrigger = within(view.container).getByLabelText("composer.collaborationMode");
-    expect((selectTrigger as HTMLButtonElement).disabled).toBe(false);
-
-    await act(async () => {
-      fireEvent.pointerDown(selectTrigger);
-      fireEvent.click(selectTrigger);
+    const modeSwitch = within(view.container).getByRole("switch", {
+      name: "composer.planModeToggle",
     });
-    const popup = document.body.querySelector("[data-slot='select-popup']");
-    if (!popup) {
-      throw new Error("Select popup not found");
-    }
-    const optionText = Array.from(
-      popup.querySelectorAll("[data-slot='select-item']"),
-    )
-      .map((item) => item.textContent ?? "")
-      .join(" | ");
-    expect(optionText).toMatch(/composer\.collaborationCode|code/i);
-    expect(optionText).toMatch(/composer\.collaborationPlan|plan/i);
+    fireEvent.click(modeSwitch);
+
+    expect(onSelectCollaborationMode).toHaveBeenCalledWith("plan");
   });
 
-  it("shows inline plan hint inside the mode selector label", () => {
+  it("switches from plan to default(code)", () => {
+    const onSelectCollaborationMode = vi.fn();
     const view = renderComposerInput({
-      collaborationModesEnabled: true,
-      collaborationModes: [
-        { id: "code", label: "Code" },
-        { id: "plan", label: "Plan" },
-      ],
       selectedCollaborationModeId: "plan",
+      onSelectCollaborationMode,
     });
 
-    expect(within(view.container).getByText("composer.collaborationPlanInlineHint")).toBeTruthy();
-  });
-
-  it("shows inline code hint inside the mode selector label", () => {
-    const view = renderComposerInput({
-      collaborationModesEnabled: true,
-      collaborationModes: [
-        { id: "code", label: "Code" },
-        { id: "plan", label: "Plan" },
-      ],
-      selectedCollaborationModeId: "code",
+    const modeSwitch = within(view.container).getByRole("switch", {
+      name: "composer.planModeToggle",
     });
+    fireEvent.click(modeSwitch);
 
-    expect(within(view.container).getByText("Code · directly implement code changes")).toBeTruthy();
+    expect(onSelectCollaborationMode).toHaveBeenCalledWith("code");
   });
 });

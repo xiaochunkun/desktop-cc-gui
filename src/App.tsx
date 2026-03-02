@@ -3609,6 +3609,10 @@ function MainApp() {
 
   useMenuAcceleratorController({ appSettings, onDebug: addDebugEntry });
   useMenuLocalization();
+  const handleRefreshAccountRateLimits = useCallback(
+    () => refreshAccountRateLimits(activeWorkspaceId ?? undefined),
+    [activeWorkspaceId, refreshAccountRateLimits],
+  );
   const dropOverlayActive = isWorkspaceDropActive;
   const dropOverlayText = "Drop Project Here";
   const shouldShowSidebarTopbarContent = false;
@@ -3661,7 +3665,7 @@ function MainApp() {
     activeItems,
     activeRateLimits,
     usageShowRemaining: appSettings.usageShowRemaining,
-    onRefreshAccountRateLimits: () => refreshAccountRateLimits(activeWorkspaceId ?? undefined),
+    onRefreshAccountRateLimits: handleRefreshAccountRateLimits,
     showMessageAnchors: appSettings.showMessageAnchors,
     accountInfo: activeAccount,
     onSwitchAccount: handleSwitchAccount,

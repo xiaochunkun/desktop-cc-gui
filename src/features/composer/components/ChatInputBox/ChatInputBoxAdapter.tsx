@@ -29,6 +29,7 @@ import type {
 import type { QueuedMessage as ComposerQueuedMessage } from '../../../../types';
 import type { CustomCommandOption } from '../../../../types';
 import type { EngineType } from '../../../../types';
+import type { RateLimitSnapshot } from '../../../../types';
 import { formatEngineVersionLabel } from '../../../engine/utils/engineLabels';
 import {
   getClaudeProviders,
@@ -115,6 +116,11 @@ export interface ChatInputBoxAdapterProps {
 
   // Context usage
   contextUsage?: { used: number; total: number } | null;
+  accountRateLimits?: RateLimitSnapshot | null;
+  usageShowRemaining?: boolean;
+  onRefreshAccountRateLimits?: () => Promise<void> | void;
+  selectedCollaborationModeId?: string | null;
+  onSelectCollaborationMode?: (id: string | null) => void;
 
   // Queue
   queuedMessages?: ComposerQueuedMessage[];
@@ -312,6 +318,11 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
       onAddAttachment,
       onRemoveAttachment,
       contextUsage,
+      accountRateLimits,
+      usageShowRemaining,
+      onRefreshAccountRateLimits,
+      selectedCollaborationModeId,
+      onSelectCollaborationMode,
       queuedMessages,
       onDeleteQueued,
       files,
@@ -749,6 +760,11 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
         usageUsedTokens={contextUsage?.used}
         usageMaxTokens={contextUsage?.total}
         showUsage={true}
+        accountRateLimits={accountRateLimits}
+        usageShowRemaining={usageShowRemaining}
+        onRefreshAccountRateLimits={onRefreshAccountRateLimits}
+        selectedCollaborationModeId={selectedCollaborationModeId}
+        onSelectCollaborationMode={onSelectCollaborationMode}
         messageQueue={messageQueue}
         onRemoveFromQueue={onDeleteQueued}
         sdkInstalled={true}

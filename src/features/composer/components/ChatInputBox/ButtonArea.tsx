@@ -80,6 +80,11 @@ export const ButtonArea = ({
   providerAvailability,
   providerVersions,
   reasoningEffort = 'medium',
+  accountRateLimits,
+  usageShowRemaining = false,
+  onRefreshAccountRateLimits,
+  selectedCollaborationModeId,
+  onSelectCollaborationMode,
   onSubmit,
   onStop,
   onModeSelect,
@@ -98,6 +103,7 @@ export const ButtonArea = ({
 }: ButtonAreaProps) => {
   const { t } = useTranslation();
   // const fileInputRef = useRef<HTMLInputElement>(null);
+  const isPlanModeEnabled = (selectedCollaborationModeId ?? 'plan') === 'plan';
 
   // Track changes to custom models in localStorage
   // When localStorage changes, updating this version number triggers useMemo recalculation
@@ -220,6 +226,13 @@ export const ButtonArea = ({
     onProviderSelect?.(providerId);
   }, [onProviderSelect]);
 
+  const handlePlanModeToggle = useCallback(() => {
+    if (!onSelectCollaborationMode) {
+      return;
+    }
+    onSelectCollaborationMode(isPlanModeEnabled ? 'code' : 'plan');
+  }, [isPlanModeEnabled, onSelectCollaborationMode]);
+
   return (
     <div className="button-area" data-provider={currentProvider}>
       {/* Left side: selectors */}
@@ -233,6 +246,11 @@ export const ButtonArea = ({
           onToggleThinking={onToggleThinking}
           streamingEnabled={streamingEnabled}
           onStreamingEnabledChange={onStreamingEnabledChange}
+          accountRateLimits={accountRateLimits}
+          usageShowRemaining={usageShowRemaining}
+          onRefreshAccountRateLimits={onRefreshAccountRateLimits}
+          selectedCollaborationModeId={selectedCollaborationModeId}
+          onSelectCollaborationMode={onSelectCollaborationMode}
           selectedAgent={selectedAgent}
           onAgentSelect={onAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
@@ -241,6 +259,19 @@ export const ButtonArea = ({
         <ModelSelect value={selectedModel} onChange={onModelSelect ?? NOOP_MODEL} models={availableModels} currentProvider={currentProvider} onAddModel={onAddModel} />
         {currentProvider === 'codex' && (
           <ReasoningSelect value={reasoningEffort} onChange={onReasoningChange ?? NOOP_REASONING} />
+        )}
+        {currentProvider === 'codex' && isPlanModeEnabled && (
+          <button
+            className={`selector-button selector-plan-mode-button ${isPlanModeEnabled ? 'active' : ''}`}
+            onClick={handlePlanModeToggle}
+            title={t('composer.planModeToggle')}
+            disabled={!onSelectCollaborationMode}
+          >
+            <span className="codicon codicon-git-branch" />
+            <span className="selector-button-text">
+              {t('composer.planModeShort')}
+            </span>
+          </button>
         )}
       </div>
 

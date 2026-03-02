@@ -26,6 +26,15 @@
   font-size: 13px;
 }
 
+.selector-button.selector-plan-mode-button {
+  border: none;
+}
+
+.selector-button.selector-plan-mode-button.active {
+  color: var(--accent-primary, #2563eb);
+  background: transparent;
+}
+
 /* Icon-only config button (circle shape like "+" in reference) */
 .selector-button.config-button {
   width: 28px;
@@ -216,6 +225,68 @@
 .selector-add-icon {
   font-size: 14px;
   width: 16px;
+}
+
+.selector-usage-dropdown {
+  padding: 8px 10px;
+}
+
+.selector-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.selector-usage-refresh {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.selector-usage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.selector-usage-row + .selector-usage-row {
+  margin-top: 8px;
+}
+
+.selector-usage-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.selector-usage-progress-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dropdown-border) 65%, transparent);
+  overflow: hidden;
+}
+
+.selector-usage-progress-fill {
+  display: block;
+  height: 100%;
+  background: #4d8ff0;
+  border-radius: 999px;
+}
+
+.selector-usage-reset {
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 /* Selector toast notification */

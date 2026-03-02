@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Switch } from 'antd';
@@ -6,7 +6,8 @@ import { Claude, Gemini } from '@lobehub/icons';
 import openaiColorIcon from '../../../../../assets/model-icons/openai.svg';
 import { AVAILABLE_PROVIDERS } from '../types';
 import { agentProvider, CREATE_NEW_AGENT_ID, EMPTY_STATE_ID, type AgentItem } from '../providers/agentProvider';
-import type { ProviderId, SelectedAgent } from '../types';
+import type { AccountRateLimitsInfo, ProviderId, SelectedAgent } from '../types';
+import { formatRelativeTime } from '../../../../../utils/time';
 
 interface ConfigSelectProps {
   currentProvider: string;
@@ -17,6 +18,11 @@ interface ConfigSelectProps {
   onToggleThinking?: (enabled: boolean) => void;
   streamingEnabled?: boolean;
   onStreamingEnabledChange?: (enabled: boolean) => void;
+  accountRateLimits?: AccountRateLimitsInfo | null;
+  usageShowRemaining?: boolean;
+  onRefreshAccountRateLimits?: () => Promise<void> | void;
+  selectedCollaborationModeId?: string | null;
+  onSelectCollaborationMode?: (id: string | null) => void;
   selectedAgent?: SelectedAgent | null;
   onAgentSelect?: (agent: SelectedAgent) => void;
   onOpenAgentSettings?: () => void;
@@ -60,21 +66,29 @@ export const ConfigSelect = ({
   onToggleThinking,
   streamingEnabled,
   onStreamingEnabledChange,
+  accountRateLimits,
+  usageShowRemaining = false,
+  onRefreshAccountRateLimits,
+  selectedCollaborationModeId,
+  onSelectCollaborationMode,
   selectedAgent,
   onAgentSelect,
   onOpenAgentSettings,
 }: ConfigSelectProps) => {
+  const USAGE_REFRESH_TIMEOUT_MS = 10_000;
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState<'none' | 'provider' | 'agent'>('none');
+  const [activeSubmenu, setActiveSubmenu] = useState<'none' | 'provider' | 'agent' | 'usage'>('none');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [agentItems, setAgentItems] = useState<AgentItem[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
+  const [usageLoading, setUsageLoading] = useState(false);
   
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const agentAbortControllerRef = useRef<AbortController | null>(null);
+  const usageLoadingRef = useRef(false);
 
   const providers = AVAILABLE_PROVIDERS.map((provider) => ({
     ...provider,
@@ -82,6 +96,58 @@ export const ConfigSelect = ({
     version: providerVersions?.[provider.id] ?? null,
   }));
   const currentProviderInfo = providers.find((p) => p.id === providerId) || providers[0];
+  const isCodexProvider = providerId === 'codex';
+  const isPlanModeEnabled = (selectedCollaborationModeId ?? 'plan') === 'plan';
+
+  const handlePlanModeToggle = useCallback(
+    (enabled: boolean) => {
+      if (!onSelectCollaborationMode) {
+        return;
+      }
+      onSelectCollaborationMode(enabled ? 'plan' : 'code');
+    },
+    [onSelectCollaborationMode],
+  );
+
+  const resolveUsagePercent = useCallback(
+    (usedPercent: number | null | undefined): number | null => {
+      if (typeof usedPercent !== 'number' || Number.isNaN(usedPercent)) {
+        return null;
+      }
+      const clamped = Math.max(0, Math.min(100, Math.round(usedPercent)));
+      return usageShowRemaining ? 100 - clamped : clamped;
+    },
+    [usageShowRemaining],
+  );
+
+  const formatUsageReset = useCallback(
+    (value: number | null | undefined, labelKey: 'usage.sessionReset' | 'usage.weeklyReset') => {
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return null;
+      }
+      const resetMs = value > 1_000_000_000_000 ? value : value * 1000;
+      return `${t(labelKey)} ${formatRelativeTime(resetMs)}`;
+    },
+    [t],
+  );
+
+  const usageSnapshot = useMemo(() => {
+    const sessionPercent = resolveUsagePercent(accountRateLimits?.primary?.usedPercent);
+    const weeklyPercent = resolveUsagePercent(accountRateLimits?.secondary?.usedPercent);
+    return {
+      sessionPercent,
+      weeklyPercent,
+      showWeekly: Boolean(accountRateLimits?.secondary),
+      sessionResetLabel: formatUsageReset(
+        accountRateLimits?.primary?.resetsAt,
+        'usage.sessionReset',
+      ),
+      weeklyResetLabel: formatUsageReset(
+        accountRateLimits?.secondary?.resetsAt,
+        'usage.weeklyReset',
+      ),
+    };
+  }, [accountRateLimits, formatUsageReset, resolveUsagePercent]);
 
   const showToastMessage = useCallback((message: string) => {
     setToastMessage(message);
@@ -144,6 +210,31 @@ export const ConfigSelect = ({
     }
   }, [t]);
 
+  const refreshUsageSnapshot = useCallback(async () => {
+    if (!onRefreshAccountRateLimits || usageLoadingRef.current) {
+      return;
+    }
+    usageLoadingRef.current = true;
+    setUsageLoading(true);
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        Promise.resolve(onRefreshAccountRateLimits()),
+        new Promise<void>((resolve) => {
+          timeoutId = setTimeout(resolve, USAGE_REFRESH_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      // Ignore refresh failures so the menu remains usable.
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      usageLoadingRef.current = false;
+      setUsageLoading(false);
+    }
+  }, [onRefreshAccountRateLimits]);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -173,6 +264,11 @@ export const ConfigSelect = ({
     if (activeSubmenu !== 'agent') return;
     loadAgents();
   }, [activeSubmenu, loadAgents]);
+
+  useEffect(() => {
+    if (activeSubmenu !== 'usage') return;
+    void refreshUsageSnapshot();
+  }, [activeSubmenu, refreshUsageSnapshot]);
 
   useEffect(() => {
     return () => {
@@ -284,6 +380,81 @@ export const ConfigSelect = ({
             </div>
           );
         })
+      )}
+    </div>
+  );
+
+  const renderUsageSubmenu = () => (
+    <div
+      className="selector-dropdown selector-usage-dropdown"
+      style={{
+        position: 'absolute',
+        left: '100%',
+        bottom: 0,
+        marginLeft: '-30px',
+        zIndex: 10001,
+        minWidth: '280px',
+      }}
+    >
+      <div className="selector-usage-header">
+        <span>{t('home.usageSnapshot')}</span>
+        <button
+          type="button"
+          className="selector-usage-refresh"
+          onClick={(e) => {
+            e.stopPropagation();
+            void refreshUsageSnapshot();
+          }}
+          title={t('home.refreshUsage')}
+        >
+          <span className={`codicon ${usageLoading ? 'codicon-loading codicon-modifier-spin' : 'codicon-refresh'}`} />
+        </button>
+      </div>
+
+      <div className="selector-usage-row">
+        <div className="selector-usage-row-top">
+          <span>5h limit</span>
+          <span>
+            {usageSnapshot.sessionPercent === null
+              ? '--'
+              : `${usageSnapshot.sessionPercent}% ${t(
+                  usageShowRemaining ? 'usage.remaining' : 'usage.used',
+                )}`}
+          </span>
+        </div>
+        <div className="selector-usage-progress-track" aria-hidden>
+          <span
+            className="selector-usage-progress-fill"
+            style={{ width: `${usageSnapshot.sessionPercent ?? 0}%` }}
+          />
+        </div>
+        {usageSnapshot.sessionResetLabel && (
+          <div className="selector-usage-reset">{usageSnapshot.sessionResetLabel}</div>
+        )}
+      </div>
+
+      {usageSnapshot.showWeekly && (
+        <div className="selector-usage-row">
+          <div className="selector-usage-row-top">
+            <span>Weekly limit</span>
+            <span>
+              {usageSnapshot.weeklyPercent === null
+                ? '--'
+                : `${usageSnapshot.weeklyPercent}% ${t(
+                    usageShowRemaining ? 'usage.remaining' : 'usage.used',
+                  )}`}
+            </span>
+          </div>
+          <div className="selector-usage-progress-track" aria-hidden>
+            <span
+              className="selector-usage-progress-fill"
+              style={{ width: `${usageSnapshot.weeklyPercent ?? 0}%` }}
+            />
+          </div>
+          {usageSnapshot.weeklyResetLabel && (
+            <div className="selector-usage-reset">{usageSnapshot.weeklyResetLabel}</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -433,6 +604,68 @@ export const ConfigSelect = ({
               }}
             />
           </div>
+
+          {isCodexProvider && (
+            <>
+              <div style={{ height: 1, background: 'var(--dropdown-border)', margin: '4px 0', opacity: 0.5 }} />
+              <div
+                className="selector-option selector-option-plan-mode"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlanModeToggle(!isPlanModeEnabled);
+                }}
+                onMouseEnter={() => setActiveSubmenu('none')}
+                style={{ justifyContent: 'space-between', cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="codicon codicon-git-branch" />
+                  <span>{t('composer.planModeToggle')}</span>
+                </div>
+                <Switch
+                  size="small"
+                  checked={isPlanModeEnabled}
+                  disabled={!onSelectCollaborationMode}
+                  onClick={(checked, e) => {
+                     e.stopPropagation();
+                     handlePlanModeToggle(checked);
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {isCodexProvider && (
+            <>
+              <div style={{ height: 1, background: 'var(--dropdown-border)', margin: '4px 0', opacity: 0.5 }} />
+              <div
+                className="selector-option selector-option-live-usage"
+                onMouseEnter={() => setActiveSubmenu('usage')}
+                onMouseLeave={() => setActiveSubmenu('none')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveSubmenu('usage');
+                }}
+                style={{ position: 'relative' }}
+              >
+                <span className="codicon codicon-pulse" />
+                <span>{t('composer.liveUsage')}</span>
+                <div
+                  style={{
+                    marginLeft: 'auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    alignSelf: 'stretch',
+                    paddingLeft: '12px',
+                    cursor: 'pointer',
+                  }}
+                  title={t('home.usageSnapshot')}
+                >
+                  <span className="codicon codicon-chevron-right" style={{ fontSize: '12px' }} />
+                </div>
+                {activeSubmenu === 'usage' && renderUsageSubmenu()}
+              </div>
+            </>
+          )}
         </div>
       )}
 

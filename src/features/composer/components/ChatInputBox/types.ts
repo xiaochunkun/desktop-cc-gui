@@ -396,6 +396,16 @@ export interface UsageInfo {
   total?: number;
 }
 
+export interface RateLimitWindowInfo {
+  usedPercent?: number | null;
+  resetsAt?: number | null;
+}
+
+export interface AccountRateLimitsInfo {
+  primary?: RateLimitWindowInfo | null;
+  secondary?: RateLimitWindowInfo | null;
+}
+
 // ============================================================
 // Component Ref Handle Types
 // ============================================================
@@ -449,6 +459,16 @@ export interface ChatInputBoxProps {
   usageMaxTokens?: number;
   /** Whether to show usage */
   showUsage?: boolean;
+  /** Account rate limits snapshot for codex usage panel */
+  accountRateLimits?: AccountRateLimitsInfo | null;
+  /** Show remaining limits instead of used */
+  usageShowRemaining?: boolean;
+  /** Refresh account rate limits callback */
+  onRefreshAccountRateLimits?: () => Promise<void> | void;
+  /** Current collaboration mode id ('code' | 'plan') */
+  selectedCollaborationModeId?: string | null;
+  /** Toggle collaboration mode callback */
+  onSelectCollaborationMode?: (id: string | null) => void;
   /** Whether always thinking is enabled */
   alwaysThinkingEnabled?: boolean;
   /** Attachment list */
@@ -576,6 +596,16 @@ export interface ButtonAreaProps {
   providerVersions?: Partial<Record<ProviderId, string | null>>;
   /** Current reasoning effort (Codex only) */
   reasoningEffort?: ReasoningEffort;
+  /** Account rate limits snapshot for codex usage panel */
+  accountRateLimits?: AccountRateLimitsInfo | null;
+  /** Show remaining limits instead of used */
+  usageShowRemaining?: boolean;
+  /** Refresh account rate limits callback */
+  onRefreshAccountRateLimits?: () => Promise<void> | void;
+  /** Current collaboration mode id ('code' | 'plan') */
+  selectedCollaborationModeId?: string | null;
+  /** Toggle collaboration mode callback */
+  onSelectCollaborationMode?: (id: string | null) => void;
 
   // Event callbacks
   onSubmit?: () => void;
