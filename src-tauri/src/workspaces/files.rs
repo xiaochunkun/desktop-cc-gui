@@ -34,6 +34,66 @@ pub(crate) fn list_workspace_files_inner(
     // Always open the repo so we can tag gitignored files for dimmed styling.
     let repo = Repository::open(root).ok();
 
+    // Seed root-level entries first so the file tree always reflects the real workspace root
+    // even when deep traversal later hits the max file cap.
+    if let Ok(entries) = std::fs::read_dir(root) {
+        let mut root_entries = entries.filter_map(|entry| entry.ok()).collect::<Vec<_>>();
+        root_entries.sort_by(|a, b| {
+            a.file_name()
+                .to_string_lossy()
+                .cmp(&b.file_name().to_string_lossy())
+        });
+        for entry in root_entries {
+            let path = entry.path();
+            let rel_path = match path.strip_prefix(root) {
+                Ok(path) => path,
+                Err(_) => continue,
+            };
+            let normalized = normalize_git_path(&rel_path.to_string_lossy());
+            if normalized.is_empty() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            let is_ignored = repo
+                .as_ref()
+                .and_then(|r| r.status_should_ignore(rel_path).ok())
+                .unwrap_or(false);
+            if file_type.is_dir() {
+                if should_always_skip(&name) {
+                    continue;
+                }
+                directories.push(normalized.clone());
+                if is_ignored {
+                    gitignored_directories.push(normalized);
+                }
+            } else if file_type.is_file() {
+                if name == ".DS_Store" {
+                    continue;
+                }
+                files.push(normalized.clone());
+                if is_ignored {
+                    gitignored_files.push(normalized);
+                }
+                if files.len() >= max_files {
+                    files.sort();
+                    directories.sort();
+                    gitignored_files.sort();
+                    gitignored_directories.sort();
+                    return WorkspaceFilesResponse {
+                        files,
+                        directories,
+                        gitignored_files,
+                        gitignored_directories,
+                    };
+                }
+            }
+        }
+    }
+
     let walker = WalkBuilder::new(root)
         .hidden(false)
         .follow_links(false)
@@ -57,6 +117,9 @@ pub(crate) fn list_workspace_files_inner(
             Ok(entry) => entry,
             Err(_) => continue,
         };
+        if entry.depth() <= 1 {
+            continue;
+        }
         if let Ok(rel_path) = entry.path().strip_prefix(root) {
             let normalized = normalize_git_path(&rel_path.to_string_lossy());
             if normalized.is_empty() {
