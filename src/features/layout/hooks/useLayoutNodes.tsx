@@ -77,6 +77,7 @@ type ThreadActivityStatus = {
   isProcessing: boolean;
   hasUnread: boolean;
   isReviewing: boolean;
+  isContextCompacting?: boolean;
   processingStartedAt?: number | null;
   lastDurationMs?: number | null;
   heartbeatPulse?: number;
@@ -814,6 +815,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       disabled={options.isReviewing}
       contextUsage={options.activeTokenUsage}
       contextDualViewEnabled={options.contextDualViewEnabled}
+      isContextCompacting={activeThreadStatus?.isContextCompacting ?? false}
       accountRateLimits={options.activeRateLimits}
       usageShowRemaining={options.usageShowRemaining}
       onRefreshAccountRateLimits={options.onRefreshAccountRateLimits}

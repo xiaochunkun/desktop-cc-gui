@@ -116,11 +116,13 @@ fn extract_compaction_usage_percent(value: &Value) -> Option<f64> {
     let params = value.get("params")?;
     let (used_tokens, context_window) = if method == "token_count" {
         let info = params.get("info")?;
-        let usage = info
-            .get("total_token_usage")
-            .or_else(|| info.get("totalTokenUsage"))
-            .or_else(|| info.get("last_token_usage"))
-            .or_else(|| info.get("lastTokenUsage"))?;
+        let last_usage = info
+            .get("last_token_usage")
+            .or_else(|| info.get("lastTokenUsage"))
+            .filter(|usage| usage.is_object());
+        // Require last/current snapshot for compaction decisions.
+        // total_* fields are cumulative session stats and can stay high after compaction.
+        let usage = last_usage?;
         let input_tokens = read_number_field(usage, &["input_tokens", "inputTokens"]).unwrap_or(0.0);
         let cached_tokens = read_number_field(
             usage,
@@ -145,10 +147,11 @@ fn extract_compaction_usage_percent(value: &Value) -> Option<f64> {
             .get("tokenUsage")
             .or_else(|| params.get("token_usage"))
             .unwrap_or(&Value::Null);
-        let total = usage.get("total").unwrap_or(usage);
-        let input_tokens = read_number_field(total, &["inputTokens", "input_tokens"]).unwrap_or(0.0);
+        // Require last/current snapshot for auto-compaction decisions.
+        let snapshot = usage.get("last").filter(|value| value.is_object())?;
+        let input_tokens = read_number_field(snapshot, &["inputTokens", "input_tokens"]).unwrap_or(0.0);
         let cached_tokens = read_number_field(
-            total,
+            snapshot,
             &[
                 "cachedInputTokens",
                 "cached_input_tokens",
@@ -2405,12 +2408,12 @@ mod tests {
     }
 
     #[test]
-    fn extract_compaction_usage_percent_reads_token_count_payload() {
+    fn extract_compaction_usage_percent_reads_token_count_last_payload() {
         let value = json!({
             "method": "token_count",
             "params": {
                 "info": {
-                    "total_token_usage": {
+                    "last_token_usage": {
                         "input_tokens": 160000,
                         "cached_input_tokens": 40000,
                         "model_context_window": 200000
@@ -2423,7 +2426,65 @@ mod tests {
     }
 
     #[test]
-    fn extract_compaction_usage_percent_reads_thread_usage_payload() {
+    fn extract_compaction_usage_percent_returns_none_when_token_count_last_missing() {
+        let value = json!({
+            "method": "token_count",
+            "params": {
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 160000,
+                        "cached_input_tokens": 40000,
+                        "model_context_window": 200000
+                    }
+                }
+            }
+        });
+        assert!(extract_compaction_usage_percent(&value).is_none());
+    }
+
+    #[test]
+    fn extract_compaction_usage_percent_prefers_last_token_count_snapshot() {
+        let value = json!({
+            "method": "token_count",
+            "params": {
+                "info": {
+                    "total_token_usage": {
+                        "input_tokens": 180000,
+                        "cached_input_tokens": 0,
+                        "model_context_window": 200000
+                    },
+                    "last_token_usage": {
+                        "input_tokens": 20000,
+                        "cached_input_tokens": 0,
+                        "model_context_window": 200000
+                    }
+                }
+            }
+        });
+        let percent = extract_compaction_usage_percent(&value).unwrap_or_default();
+        assert!((percent - 10.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn extract_compaction_usage_percent_reads_thread_last_usage_payload() {
+        let value = json!({
+            "method": "thread/tokenUsage/updated",
+            "params": {
+                "tokenUsage": {
+                    "last": {
+                        "inputTokens": 92000,
+                        "cachedInputTokens": 0
+                    },
+                    "modelContextWindow": 100000
+                }
+            }
+        });
+        let percent = extract_compaction_usage_percent(&value).unwrap_or_default();
+        assert!((percent - 92.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn extract_compaction_usage_percent_returns_none_when_thread_last_missing() {
         let value = json!({
             "method": "thread/tokenUsage/updated",
             "params": {
@@ -2436,8 +2497,29 @@ mod tests {
                 }
             }
         });
+        assert!(extract_compaction_usage_percent(&value).is_none());
+    }
+
+    #[test]
+    fn extract_compaction_usage_percent_prefers_thread_last_snapshot() {
+        let value = json!({
+            "method": "thread/tokenUsage/updated",
+            "params": {
+                "tokenUsage": {
+                    "total": {
+                        "inputTokens": 190000,
+                        "cachedInputTokens": 0
+                    },
+                    "last": {
+                        "inputTokens": 20000,
+                        "cachedInputTokens": 0
+                    },
+                    "modelContextWindow": 200000
+                }
+            }
+        });
         let percent = extract_compaction_usage_percent(&value).unwrap_or_default();
-        assert!((percent - 92.0).abs() < 0.0001);
+        assert!((percent - 10.0).abs() < 0.0001);
     }
 
     #[test]

@@ -146,6 +146,7 @@ export function useThreadTurnEvents({
         threadId,
         engine: inferEngineFromThreadId(threadId),
       });
+      dispatch({ type: "markContextCompacting", threadId, isCompacting: false });
       if (pendingInterruptsRef.current.has(threadId)) {
         pendingInterruptsRef.current.delete(threadId);
         if (turnId) {
@@ -172,6 +173,11 @@ export function useThreadTurnEvents({
           type: "finalizePendingToolStatuses",
           threadId: targetThreadId,
           status: "completed",
+        });
+        dispatch({
+          type: "markContextCompacting",
+          threadId: targetThreadId,
+          isCompacting: false,
         });
         markProcessing(targetThreadId, false);
         setActiveTurnId(targetThreadId, null);
@@ -256,6 +262,7 @@ export function useThreadTurnEvents({
         threadId,
         status: "failed",
       });
+      dispatch({ type: "markContextCompacting", threadId, isCompacting: false });
       markProcessing(threadId, false);
       markReviewing(threadId, false);
       setActiveTurnId(threadId, null);
@@ -265,6 +272,11 @@ export function useThreadTurnEvents({
           type: "finalizePendingToolStatuses",
           threadId: aliasThreadId,
           status: "failed",
+        });
+        dispatch({
+          type: "markContextCompacting",
+          threadId: aliasThreadId,
+          isCompacting: false,
         });
         markProcessing(aliasThreadId, false);
         markReviewing(aliasThreadId, false);
@@ -298,6 +310,7 @@ export function useThreadTurnEvents({
   const onContextCompacted = useCallback(
     (workspaceId: string, threadId: string, turnId: string) => {
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
+      dispatch({ type: "markContextCompacting", threadId, isCompacting: false });
       const timestamp = Date.now();
       const resolvedTurnId = turnId || `auto-${timestamp}`;
       dispatch({ type: "appendContextCompacted", threadId, turnId: resolvedTurnId });
@@ -318,6 +331,7 @@ export function useThreadTurnEvents({
       },
     ) => {
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
+      dispatch({ type: "markContextCompacting", threadId, isCompacting: true });
       safeMessageActivity();
     },
     [dispatch, safeMessageActivity],
@@ -326,6 +340,7 @@ export function useThreadTurnEvents({
   const onContextCompactionFailed = useCallback(
     (workspaceId: string, threadId: string, reason: string) => {
       dispatch({ type: "ensureThread", workspaceId, threadId, engine: inferEngineFromThreadId(threadId) });
+      dispatch({ type: "markContextCompacting", threadId, isCompacting: false });
       const message = reason
         ? t("threads.contextCompactionFailedWithMessage", { message: reason })
         : t("threads.contextCompactionFailed");

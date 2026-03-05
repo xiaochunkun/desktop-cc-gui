@@ -103,6 +103,7 @@ type ComposerProps = {
   directories?: string[];
   contextUsage?: ThreadTokenUsage | null;
   contextDualViewEnabled?: boolean;
+  isContextCompacting?: boolean;
   accountRateLimits?: RateLimitSnapshot | null;
   usageShowRemaining?: boolean;
   onRefreshAccountRateLimits?: () => Promise<void> | void;
@@ -232,7 +233,11 @@ function resolveCompactionState(
   items: ConversationItem[],
   isProcessing: boolean,
   hasUsage: boolean,
+  isContextCompacting: boolean,
 ): ContextCompactionState {
+  if (isContextCompacting) {
+    return "compacting";
+  }
   if (items.some(isCompactedConversationItem)) {
     return "compacted";
   }
@@ -246,13 +251,14 @@ function resolveDualContextUsageModel(
   contextUsage: ThreadTokenUsage | null,
   items: ConversationItem[],
   isProcessing: boolean,
+  isContextCompacting: boolean,
 ): DualContextUsageViewModel {
   const contextWindow = Math.max(contextUsage?.modelContextWindow ?? 0, 0);
   const lastInput = Math.max(contextUsage?.last.inputTokens ?? 0, 0);
   const lastCached = Math.max(contextUsage?.last.cachedInputTokens ?? 0, 0);
-  const totalInput = Math.max(contextUsage?.total.inputTokens ?? 0, 0);
-  const totalCached = Math.max(contextUsage?.total.cachedInputTokens ?? 0, 0);
-  const usedTokens = lastInput + lastCached > 0 ? lastInput + lastCached : totalInput + totalCached;
+  // Use current/last snapshot only for context window occupancy.
+  // total.* is cumulative session usage and can exceed context window after compaction.
+  const usedTokens = lastInput + lastCached;
   const hasUsage = usedTokens > 0 && contextWindow > 0;
   const percent = contextWindow > 0 ? clampUsagePercent((usedTokens / contextWindow) * 100) : 0;
   return {
@@ -260,7 +266,12 @@ function resolveDualContextUsageModel(
     contextWindow,
     percent,
     hasUsage,
-    compactionState: resolveCompactionState(items, isProcessing, hasUsage),
+    compactionState: resolveCompactionState(
+      items,
+      isProcessing,
+      hasUsage,
+      isContextCompacting,
+    ),
   };
 }
 
@@ -439,6 +450,7 @@ export const Composer = memo(function Composer({
   directories = [],
   contextUsage = null,
   contextDualViewEnabled = false,
+  isContextCompacting = false,
   accountRateLimits = null,
   usageShowRemaining = false,
   onRefreshAccountRateLimits,
@@ -1047,8 +1059,14 @@ export const Composer = memo(function Composer({
   );
 
   const dualContextUsage = useMemo(
-    () => resolveDualContextUsageModel(contextUsage, items, isProcessing),
-    [contextUsage, items, isProcessing],
+    () =>
+      resolveDualContextUsageModel(
+        contextUsage,
+        items,
+        isProcessing,
+        isContextCompacting,
+      ),
+    [contextUsage, isContextCompacting, items, isProcessing],
   );
   const codexContextDualViewEnabled = contextDualViewEnabled && isCodexEngine;
 

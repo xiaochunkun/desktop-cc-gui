@@ -794,44 +794,56 @@ export function useAppServerEvents(
         }
 
         if (info) {
-          // Extract usage from total_token_usage or last_token_usage
-          const usageData =
+          const totalUsageData =
             (info.total_token_usage as Record<string, unknown> | undefined) ??
-            (info.totalTokenUsage as Record<string, unknown> | undefined) ??
+            (info.totalTokenUsage as Record<string, unknown> | undefined);
+          const lastUsageData =
             (info.last_token_usage as Record<string, unknown> | undefined) ??
             (info.lastTokenUsage as Record<string, unknown> | undefined);
+          // Prefer last/current snapshot, fallback to total when unavailable.
+          const fallbackUsageData = lastUsageData ?? totalUsageData;
 
-          if (usageData) {
-            // Convert to the format expected by onThreadTokenUsageUpdated
-            const inputTokens = Number(usageData.input_tokens ?? usageData.inputTokens ?? 0);
-            const outputTokens = Number(usageData.output_tokens ?? usageData.outputTokens ?? 0);
-            const cachedInputTokens = Number(
-              usageData.cached_input_tokens ??
-              usageData.cache_read_input_tokens ??
-              usageData.cachedInputTokens ??
-              usageData.cacheReadInputTokens ?? 0
-            );
+          if (fallbackUsageData) {
+            const normalizeUsage = (usageData: Record<string, unknown>) => {
+              const inputTokens = Number(usageData.input_tokens ?? usageData.inputTokens ?? 0);
+              const outputTokens = Number(usageData.output_tokens ?? usageData.outputTokens ?? 0);
+              const cachedInputTokens = Number(
+                usageData.cached_input_tokens ??
+                  usageData.cache_read_input_tokens ??
+                  usageData.cachedInputTokens ??
+                  usageData.cacheReadInputTokens ??
+                  0,
+              );
+              return {
+                inputTokens,
+                outputTokens,
+                cachedInputTokens,
+                totalTokens: inputTokens + outputTokens,
+              };
+            };
+
+            const totalUsage = normalizeUsage(totalUsageData ?? fallbackUsageData);
+            const lastUsage = lastUsageData
+              ? normalizeUsage(lastUsageData)
+              : {
+                  inputTokens: 0,
+                  outputTokens: 0,
+                  cachedInputTokens: 0,
+                  totalTokens: 0,
+                };
             const modelContextWindow = Number(
-              usageData.model_context_window ??
-              usageData.modelContextWindow ??
-              info.model_context_window ??
-              info.modelContextWindow ??
-              200000 // Default for Codex (will be updated by runtime events)
+              lastUsageData?.model_context_window ??
+                lastUsageData?.modelContextWindow ??
+                totalUsageData?.model_context_window ??
+                totalUsageData?.modelContextWindow ??
+                info.model_context_window ??
+                info.modelContextWindow ??
+                200000, // Default for Codex (will be updated by runtime events)
             );
 
             const tokenUsage = {
-              total: {
-                inputTokens,
-                outputTokens,
-                cachedInputTokens,
-                totalTokens: inputTokens + outputTokens,
-              },
-              last: {
-                inputTokens,
-                outputTokens,
-                cachedInputTokens,
-                totalTokens: inputTokens + outputTokens,
-              },
+              total: totalUsage,
+              last: lastUsage,
               modelContextWindow,
             };
 
@@ -879,7 +891,7 @@ export function useAppServerEvents(
               200000 // Default for Codex (will be updated by runtime events)
             );
 
-            if (inputTokens > 0 || outputTokens > 0) {
+            if (inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0) {
               const tokenUsage = {
                 total: {
                   inputTokens,

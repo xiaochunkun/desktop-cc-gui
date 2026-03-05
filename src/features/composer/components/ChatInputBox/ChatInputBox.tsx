@@ -1042,6 +1042,7 @@ export const ChatInputBox = memo(forwardRef<ChatInputBoxHandle, ChatInputBoxProp
             contextDualViewEnabled={contextDualViewEnabled}
             dualContextUsage={dualContextUsage}
             onRequestContextCompaction={onRequestContextCompaction}
+            isLoading={isLoading}
             onClearFile={onClearContext}
             onAddAttachment={handleAddAttachment}
             selectedAgent={selectedAgent}

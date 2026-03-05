@@ -60,12 +60,14 @@ function ComposerHarness({
   contextUsage = null,
   contextDualViewEnabled = false,
   isProcessing = false,
+  isContextCompacting = false,
   items = [],
 }: {
   selectedEngine?: EngineType;
   contextUsage?: ThreadTokenUsage | null;
   contextDualViewEnabled?: boolean;
   isProcessing?: boolean;
+  isContextCompacting?: boolean;
   items?: Array<{ id: string; kind: "message"; role: "assistant" | "user"; text: string }>;
 }) {
   return (
@@ -102,6 +104,7 @@ function ComposerHarness({
       activeThreadId="thread-1"
       contextUsage={contextUsage}
       contextDualViewEnabled={contextDualViewEnabled}
+      isContextCompacting={isContextCompacting}
     />
   );
 }
@@ -154,6 +157,37 @@ describe("Composer dual context usage model", () => {
     expect(adapter.getAttribute("data-dual-state")).toBe("idle");
   });
 
+  it("does not fallback dual usage to cumulative totals when last snapshot is empty", () => {
+    render(
+      <ComposerHarness
+        selectedEngine="codex"
+        contextDualViewEnabled={true}
+        contextUsage={{
+          total: {
+            totalTokens: 900000,
+            inputTokens: 600000,
+            cachedInputTokens: 100000,
+            outputTokens: 200000,
+            reasoningOutputTokens: 0,
+          },
+          last: {
+            totalTokens: 0,
+            inputTokens: 0,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            reasoningOutputTokens: 0,
+          },
+          modelContextWindow: 258400,
+        }}
+      />,
+    );
+
+    const adapter = screen.getByTestId("chat-input-box-adapter");
+    expect(adapter.getAttribute("data-dual-used")).toBe("0");
+    expect(adapter.getAttribute("data-dual-percent")).toBe("0");
+    expect(adapter.getAttribute("data-dual-has-usage")).toBe("false");
+  });
+
   it("switches dual usage state to compacting/compacted based on runtime state", () => {
     const { rerender } = render(
       <ComposerHarness
@@ -184,5 +218,26 @@ describe("Composer dual context usage model", () => {
 
     adapter = screen.getByTestId("chat-input-box-adapter");
     expect(adapter.getAttribute("data-dual-state")).toBe("compacted");
+  });
+
+  it("keeps compacting state when context compaction event is in progress", () => {
+    render(
+      <ComposerHarness
+        selectedEngine="codex"
+        contextDualViewEnabled={true}
+        isContextCompacting={true}
+        items={[
+          {
+            id: "context-compacted-turn-1",
+            kind: "message",
+            role: "assistant",
+            text: "Context compacted.",
+          },
+        ]}
+      />,
+    );
+
+    const adapter = screen.getByTestId("chat-input-box-adapter");
+    expect(adapter.getAttribute("data-dual-state")).toBe("compacting");
   });
 });

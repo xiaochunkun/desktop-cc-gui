@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo, useState, memo } from 'react';
+import React, { useRef, useCallback, useMemo, useState, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getFileIcon } from '../../utils/fileIcons';
 import { TokenIndicator } from './TokenIndicator';
@@ -19,6 +19,7 @@ interface ContextBarProps {
   contextDualViewEnabled?: boolean;
   dualContextUsage?: DualContextUsageViewModel | null;
   onRequestContextCompaction?: () => Promise<void> | void;
+  isLoading?: boolean;
   onClearFile?: () => void;
   onAddAttachment?: (files: FileList) => void;
   selectedAgent?: SelectedAgent | null;
@@ -50,6 +51,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
   contextDualViewEnabled = false,
   dualContextUsage = null,
   onRequestContextCompaction,
+  isLoading = false,
   onClearFile,
   onAddAttachment,
   selectedAgent,
@@ -66,6 +68,10 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
 }) => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualCompactionLockRef = useRef(false);
+  const manualCompactionRequestInFlightRef = useRef(false);
+  const manualCompactionStartedAtRef = useRef<number>(0);
+  const compactionBusyRef = useRef(false);
   const [manualCompactionPending, setManualCompactionPending] = useState(false);
   const manualCompactionMinSpinMs = 1200;
 
@@ -155,8 +161,8 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
     if (dualContextUsage.compactionState === 'compacted') {
       return {
         stateClass: 'compacted',
-        barPercent: dualContextUsage.hasUsage ? usagePercent : 100,
-        percentLabel: `${Math.round(dualContextUsage.hasUsage ? usagePercent : 100)}%`,
+        barPercent: dualContextUsage.hasUsage ? usagePercent : 0,
+        percentLabel: `${Math.round(dualContextUsage.hasUsage ? usagePercent : 0)}%`,
         totalTokensValue,
         windowTitleText,
         usedPercentValue,
@@ -203,27 +209,65 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
   );
   const disableCompactionButton = manualCompactionPending
     || dualContextUsage?.compactionState === 'compacting';
+  const showCompactionSpinner = manualCompactionPending
+    || dualContextUsage?.compactionState === 'compacting';
+  const isCompactionBusy = Boolean(
+    dualContextUsage?.compactionState === 'compacting'
+      || (manualCompactionPending && isLoading),
+  );
+
+  useEffect(() => {
+    compactionBusyRef.current = isCompactionBusy;
+  }, [isCompactionBusy]);
+
+  const releaseManualCompactionPending = useCallback(async () => {
+    const elapsed = Date.now() - manualCompactionStartedAtRef.current;
+    const remainingSpinMs = Math.max(0, manualCompactionMinSpinMs - elapsed);
+    if (remainingSpinMs > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, remainingSpinMs);
+      });
+    }
+    if (manualCompactionRequestInFlightRef.current || compactionBusyRef.current) {
+      return;
+    }
+    setManualCompactionPending(false);
+    manualCompactionLockRef.current = false;
+  }, [manualCompactionMinSpinMs]);
+
+  useEffect(() => {
+    if (!manualCompactionPending) {
+      return;
+    }
+    if (manualCompactionRequestInFlightRef.current || isCompactionBusy) {
+      return;
+    }
+    void releaseManualCompactionPending();
+  }, [isCompactionBusy, manualCompactionPending, releaseManualCompactionPending]);
+
   const handleRequestContextCompaction = useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!onRequestContextCompaction || disableCompactionButton) {
+    if (
+      !onRequestContextCompaction
+      || disableCompactionButton
+      || manualCompactionLockRef.current
+    ) {
       return;
     }
+    manualCompactionLockRef.current = true;
+    manualCompactionRequestInFlightRef.current = true;
+    manualCompactionStartedAtRef.current = Date.now();
     setManualCompactionPending(true);
-    const spinStartedAt = Date.now();
     try {
       await onRequestContextCompaction();
     } finally {
-      const elapsed = Date.now() - spinStartedAt;
-      const remainingSpinMs = Math.max(0, manualCompactionMinSpinMs - elapsed);
-      if (remainingSpinMs > 0) {
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, remainingSpinMs);
-        });
+      manualCompactionRequestInFlightRef.current = false;
+      if (!compactionBusyRef.current) {
+        await releaseManualCompactionPending();
       }
-      setManualCompactionPending(false);
     }
-  }, [disableCompactionButton, manualCompactionMinSpinMs, onRequestContextCompaction]);
+  }, [disableCompactionButton, onRequestContextCompaction, releaseManualCompactionPending]);
 
   const shouldShowLegacyTokenIndicator = !(currentProvider === 'codex' && contextDualViewEnabled);
 
@@ -310,7 +354,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
                       aria-label={t('chat.contextDualViewManualCompact')}
                     >
                       <span
-                        className={`codicon ${manualCompactionPending ? 'codicon-loading codicon-modifier-spin' : 'codicon-refresh'}`}
+                        className={`codicon ${showCompactionSpinner ? 'codicon-loading codicon-modifier-spin' : 'codicon-refresh'}`}
                         aria-hidden="true"
                       />
                     </button>
