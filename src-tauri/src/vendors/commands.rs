@@ -23,10 +23,21 @@ const PROVIDER_MANAGED_FIELDS: &[&str] = &[
     "model",
     "alwaysThinkingEnabled",
     "codemossProviderId",
+    "ccSwitchProviderId",
     "maxContextLengthTokens",
     "temperature",
     "topP",
     "topK",
+];
+
+const LOCAL_SETTINGS_PROVIDER_ID: &str = "__local_settings_json__";
+const LOCAL_SETTINGS_PROVIDER_NAME: &str = "Local settings.json";
+const LOCAL_SETTINGS_PROVIDER_REMARK: &str = "Use configuration directly from ~/.claude/settings.json";
+const LOCAL_PROVIDER_MODEL_MAPPING_KEYS: &[&str] = &[
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
 ];
 
 fn claude_settings_path() -> Result<PathBuf, String> {
@@ -80,6 +91,59 @@ fn write_claude_settings(settings: &serde_json::Map<String, Value>) -> Result<()
         .map_err(|e| format!("Failed to write claude settings temp file: {}", e))?;
     std::fs::rename(&tmp_path, &path)
         .map_err(|e| format!("Failed to rename claude settings temp file: {}", e))
+}
+
+fn ensure_local_claude_settings_ready() -> Result<(), String> {
+    let path = claude_settings_path()?;
+    if !path.exists() {
+        return Err("~/.claude/settings.json does not exist. Please create it first.".to_string());
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read ~/.claude/settings.json: {}", e))?;
+    if content.trim().is_empty() {
+        return Err("~/.claude/settings.json is empty. Please provide valid JSON.".to_string());
+    }
+    let value: Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Invalid JSON in ~/.claude/settings.json: {}", e))?;
+    if !value.is_object() {
+        return Err("~/.claude/settings.json must contain a JSON object.".to_string());
+    }
+    Ok(())
+}
+
+fn extract_local_model_mapping_settings() -> Option<Value> {
+    let settings = read_claude_settings().ok()?;
+    let env = settings.get("env")?.as_object()?;
+
+    let mut filtered_env = serde_json::Map::new();
+    for key in LOCAL_PROVIDER_MODEL_MAPPING_KEYS {
+        if let Some(value) = env.get(*key) {
+            filtered_env.insert((*key).to_string(), value.clone());
+        }
+    }
+
+    if filtered_env.is_empty() {
+        return None;
+    }
+
+    let mut settings_config = serde_json::Map::new();
+    settings_config.insert("env".into(), Value::Object(filtered_env));
+    Some(Value::Object(settings_config))
+}
+
+fn build_local_provider(is_active: bool) -> ProviderConfig {
+    ProviderConfig {
+        id: LOCAL_SETTINGS_PROVIDER_ID.to_string(),
+        name: LOCAL_SETTINGS_PROVIDER_NAME.to_string(),
+        remark: Some(LOCAL_SETTINGS_PROVIDER_REMARK.to_string()),
+        website_url: None,
+        category: None,
+        created_at: Some(0),
+        is_active,
+        source: None,
+        is_local_provider: Some(true),
+        settings_config: extract_local_model_mapping_settings(),
+    }
 }
 
 /// Apply the active provider's settingsConfig to ~/.claude/settings.json
@@ -150,6 +214,21 @@ struct CodexSection {
     current: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClaudeCurrentConfig {
+    #[serde(default)]
+    api_key: String,
+    #[serde(default)]
+    base_url: String,
+    #[serde(default)]
+    auth_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider_name: Option<String>,
+}
+
 // ==================== Helpers ====================
 
 fn config_path() -> PathBuf {
@@ -179,6 +258,19 @@ fn write_config(config: &CodemossConfig) -> Result<(), String> {
     let content = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
     std::fs::write(&path, content).map_err(|e| format!("Failed to write config: {}", e))
+}
+
+fn resolve_provider_name(config: &CodemossConfig, provider_id: &str) -> Option<String> {
+    if provider_id == LOCAL_SETTINGS_PROVIDER_ID {
+        return Some(LOCAL_SETTINGS_PROVIDER_NAME.to_string());
+    }
+    config
+        .claude
+        .providers
+        .get(provider_id)
+        .and_then(|provider| provider.get("name"))
+        .and_then(|name| name.as_str())
+        .map(String::from)
 }
 
 /// Convert a raw JSON Value from config.json providers map into ProviderConfig for frontend
@@ -324,25 +416,81 @@ fn codex_provider_to_value(provider: &CodexProviderConfig) -> Value {
 pub(crate) async fn vendor_get_claude_providers() -> Result<Vec<ProviderConfig>, String> {
     let config = read_config()?;
     let current = config.claude.current.as_deref();
-    let mut providers: Vec<ProviderConfig> = config
+    let mut regular_providers: Vec<ProviderConfig> = config
         .claude
         .providers
         .iter()
         .filter_map(|(id, value)| {
+            if id == LOCAL_SETTINGS_PROVIDER_ID {
+                return None;
+            }
             let is_active = current == Some(id.as_str());
             value_to_claude_provider(id, value, is_active).ok()
         })
         .collect();
-    providers.sort_by(|a, b| {
+    regular_providers.sort_by(|a, b| {
         let ta = a.created_at.unwrap_or(0);
         let tb = b.created_at.unwrap_or(0);
         ta.cmp(&tb)
     });
+
+    let mut providers = Vec::with_capacity(regular_providers.len() + 1);
+    providers.push(build_local_provider(current == Some(LOCAL_SETTINGS_PROVIDER_ID)));
+    providers.extend(regular_providers);
+
     Ok(providers)
 }
 
 #[tauri::command]
+pub(crate) async fn vendor_get_current_claude_config() -> Result<ClaudeCurrentConfig, String> {
+    let settings = read_claude_settings()?;
+
+    let mut api_key = String::new();
+    let mut auth_type = "none".to_string();
+    let mut base_url = String::new();
+
+    if let Some(env) = settings.get("env").and_then(|v| v.as_object()) {
+        if let Some(token) = env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()) {
+            if !token.is_empty() {
+                api_key = token.to_string();
+                auth_type = "auth_token".to_string();
+            }
+        }
+        if api_key.is_empty() {
+            if let Some(key) = env.get("ANTHROPIC_API_KEY").and_then(|v| v.as_str()) {
+                if !key.is_empty() {
+                    api_key = key.to_string();
+                    auth_type = "api_key".to_string();
+                }
+            }
+        }
+        if let Some(url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
+            base_url = url.to_string();
+        }
+    }
+
+    let provider_id = settings
+        .get("codemossProviderId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let provider_name = provider_id
+        .as_ref()
+        .and_then(|id| read_config().ok().and_then(|config| resolve_provider_name(&config, id)));
+
+    Ok(ClaudeCurrentConfig {
+        api_key,
+        base_url,
+        auth_type,
+        provider_id,
+        provider_name,
+    })
+}
+
+#[tauri::command]
 pub(crate) async fn vendor_add_claude_provider(provider: ProviderConfig) -> Result<(), String> {
+    if provider.id == LOCAL_SETTINGS_PROVIDER_ID {
+        return Err("Reserved provider id".to_string());
+    }
     let mut config = read_config()?;
     if config.claude.providers.contains_key(&provider.id) {
         return Err(format!("Provider with id {} already exists", provider.id));
@@ -359,6 +507,9 @@ pub(crate) async fn vendor_update_claude_provider(
     id: String,
     updates: ProviderConfig,
 ) -> Result<(), String> {
+    if id == LOCAL_SETTINGS_PROVIDER_ID {
+        return Err("Local settings provider cannot be updated".to_string());
+    }
     let mut config = read_config()?;
     if !config.claude.providers.contains_key(&id) {
         return Err(format!("Provider {} not found", id));
@@ -372,6 +523,9 @@ pub(crate) async fn vendor_update_claude_provider(
 
 #[tauri::command]
 pub(crate) async fn vendor_delete_claude_provider(id: String) -> Result<(), String> {
+    if id == LOCAL_SETTINGS_PROVIDER_ID {
+        return Err("Local settings provider cannot be deleted".to_string());
+    }
     let mut config = read_config()?;
     if config.claude.providers.remove(&id).is_none() {
         return Err(format!("Provider {} not found", id));
@@ -385,6 +539,12 @@ pub(crate) async fn vendor_delete_claude_provider(id: String) -> Result<(), Stri
 #[tauri::command]
 pub(crate) async fn vendor_switch_claude_provider(id: String) -> Result<(), String> {
     let mut config = read_config()?;
+    if id == LOCAL_SETTINGS_PROVIDER_ID {
+        ensure_local_claude_settings_ready()?;
+        config.claude.current = Some(id);
+        write_config(&config)?;
+        return Ok(());
+    }
     let provider_value = config
         .claude
         .providers

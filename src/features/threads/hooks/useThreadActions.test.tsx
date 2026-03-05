@@ -623,6 +623,136 @@ describe("useThreadActions", () => {
     });
   });
 
+  it("matches workspace path when thread cwd contains /private prefix", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-private-1",
+            cwd: "/private/tmp/codex",
+            preview: "Private prefix path",
+            updated_at: 6100,
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "thread-private-1",
+          name: "Private prefix path",
+          updatedAt: 6100,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("filters archived and vscode thread entries", async () => {
+    vi.mocked(listThreads).mockResolvedValue({
+      result: {
+        data: [
+          {
+            id: "thread-valid",
+            cwd: "/tmp/codex",
+            preview: "Visible thread",
+            updated_at: 6200,
+            source: "cli",
+          },
+          {
+            id: "thread-archived",
+            cwd: "/tmp/codex",
+            preview: "Should hide archived",
+            updated_at: 6100,
+            archived: true,
+            source: "cli",
+          },
+          {
+            id: "thread-vscode",
+            cwd: "/tmp/codex",
+            preview: "Should hide vscode",
+            updated_at: 6000,
+            source: "vscode",
+          },
+        ],
+        nextCursor: null,
+      },
+    });
+    vi.mocked(getThreadTimestamp).mockImplementation((thread) => {
+      const value = (thread as Record<string, unknown>).updated_at as number;
+      return value ?? 0;
+    });
+
+    const { result, dispatch } = renderActions();
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "setThreads",
+      workspaceId: "ws-1",
+      threads: [
+        {
+          id: "thread-valid",
+          name: "Visible thread",
+          updatedAt: 6200,
+          engineSource: "codex",
+        },
+      ],
+    });
+  });
+
+  it("stops scanning after capped empty pages when known activity exists", async () => {
+    let calls = 0;
+    vi.mocked(listThreads).mockImplementation(async () => {
+      calls += 1;
+      return {
+        result: {
+          data: [
+            {
+              id: `thread-${calls}`,
+              cwd: "/other-workspace",
+              preview: "No match",
+              updated_at: calls,
+            },
+          ],
+          nextCursor: calls >= 100 ? null : `cursor-${calls}`,
+        },
+      } as any;
+    });
+
+    const { result } = renderActions({
+      threadActivityRef: {
+        current: {
+          "ws-1": {
+            "known-thread": 123,
+          },
+        },
+      },
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(listThreads).toHaveBeenCalledTimes(20);
+  });
+
   it("merges opencode sessions into thread list", async () => {
     vi.mocked(listThreads).mockResolvedValue({
       result: {

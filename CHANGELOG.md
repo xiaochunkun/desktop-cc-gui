@@ -2,6 +2,70 @@
 
 ---
 
+##### **2026年3月5日（v0.2.3）**
+
+English:
+
+✨ Features
+- Add runtime log console (Phase 1) with Java toolchain and cross-platform compatibility: backend `runtime_log` module, workspace-level run session state machine, real-time log streaming, `RuntimeConsoleDock`/`RuntimeLogPanel` components, Windows cmd/wrapper support
+- Add multi-stack profile detection and launch for runtime console: `runtime_log_detect_profiles` command supporting Java/Node/Python/Go, dynamic preset rendering, enhanced startup scripts with dependency checks
+- Support empty directory display in file tree with single-child chain collapse (a/b/c → a.b.c), unified Diff/History entry, and Hub shortcut for Git History toggle
+- Improve GitDiffPanel mode switching with custom dropdown menu, open/close state management, and unified visual styling
+- Add notification sound selection (default/chime/bell/ding/success) with custom file picker support, redesign Basic settings with card-based layout
+- Add usage analytics dashboard with cost estimation, session summaries, daily breakdown, trend analysis, tabbed interface and interactive charts
+- Add custom model dialog and plugin model management for vendor providers
+- Add `CurrentClaudeConfigCard` and `vendor_get_current_claude_config` command
+
+⚡ Performance
+- Optimize git status polling with adaptive active/background/paused modes using chained `setTimeout`
+- Skip per-file diff stats when changed files exceed 120 (backend) or 80 (frontend preload)
+- Prevent overlapping git status requests via in-flight tracking
+- Bound thread list page scanning with configurable caps
+- Normalize workspace paths for macOS `/private` prefix variants
+
+🎨 UI Improvements
+- Unify terminal and runtime log panel width with full-column grid layout
+- Restyle terminal tabs from capsule borders to bottom-line with blue active indicator
+- Hide duplicate runtime log toggle in file tree area, restore Git tab in PanelTabs
+
+🐛 Fixes
+- Fix file list display issues
+- Fix terminal panel close path to avoid state desynchronization
+- Fix file tree path separators on Windows to avoid mixed separators
+- Fix command preset misidentification on Windows
+
+中文：
+
+✨ Features
+- 新增运行日志控制台（第一阶段）：后端 `runtime_log` 模块、工作区级运行会话状态机、实时日志流、`RuntimeConsoleDock`/`RuntimeLogPanel` 组件、Windows cmd 兼容与 Java 启动器探测
+- 运行控制台支持多技术栈 profile 探测与启动：`runtime_log_detect_profiles` 命令支持 Java/Node/Python/Go、动态预设渲染、增强启动脚本与依赖检测
+- 文件树支持空目录展示与单子目录链折叠显示（a/b/c → a.b.c），统一 Diff/History 入口，新增 Hub 快捷按钮切换 Git History
+- 优化 GitDiffPanel 模式切换：自定义下拉菜单、开关状态管理、统一视觉层级与交互样式
+- 新增通知提示音选择（默认/风铃/铃声/叮咚/成功）与自定义文件选取，重新设计基本设置为卡片式布局
+- 新增使用量分析面板：费用估算、会话摘要、每日用量明细、趋势分析、标签页式界面与交互图表
+- 新增自定义模型对话框与供应商插件模型管理
+- 新增 `CurrentClaudeConfigCard` 与 `vendor_get_current_claude_config` 命令
+
+⚡ Performance
+- Git 状态轮询优化：自适应 active/background/paused 模式，使用链式 `setTimeout` 替代固定 `setInterval`
+- 变更文件超过 120 时跳过逐文件 diff 统计（后端），超过 80 时跳过前端 diff 预加载
+- 通过 in-flight 标记防止 Git 状态请求重叠
+- 线程列表页面扫描增加可配置上限
+- 规范化工作区路径以处理 macOS `/private` 前缀变体
+
+🎨 UI Improvements
+- 统一终端与运行日志面板宽度（全列网格布局）
+- 终端标签页由胶囊边框改为底部蓝色边线样式
+- 隐藏文件树中重复的运行日志入口，恢复 PanelTabs 中的 Git 标签
+
+🐛 Fixes
+- 修复文件列表显示问题
+- 修复终端面板关闭路径导致的状态不同步
+- 修复 Windows 上文件树路径分隔符混用问题
+- 修复 Windows 上命令预设误判问题
+
+---
+
 ##### **2026年3月3日（v0.2.2）**
 
 English:

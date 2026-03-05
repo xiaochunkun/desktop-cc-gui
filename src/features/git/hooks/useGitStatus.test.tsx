@@ -25,18 +25,33 @@ const secondaryWorkspace: WorkspaceInfo = {
   settings: { sidebarCollapsed: false },
 };
 
-const makeStatus = (branchName: string, additions = 0, deletions = 0) => ({
-  branchName,
-  files: [],
-  stagedFiles: [],
-  unstagedFiles: [],
-  totalAdditions: additions,
-  totalDeletions: deletions,
-});
+const makeStatus = (
+  branchName: string,
+  additions = 0,
+  deletions = 0,
+  fileCount = 0,
+) => {
+  const files = Array.from({ length: fileCount }, (_, index) => ({
+    path: `src/file-${index}.ts`,
+    status: "M",
+    additions: 1,
+    deletions: 0,
+  }));
+  return {
+    branchName,
+    files,
+    stagedFiles: files,
+    unstagedFiles: [],
+    totalAdditions: additions,
+    totalDeletions: deletions,
+  };
+};
 
 describe("useGitStatus", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
   });
 
   afterEach(() => {
@@ -72,6 +87,139 @@ describe("useGitStatus", () => {
     expect(getGitStatusMock).toHaveBeenCalledTimes(2);
     expect(result.current.status.branchName).toBe("next");
     expect(result.current.status.totalDeletions).toBe(4);
+
+    unmount();
+  });
+
+  it("uses slower polling for heavy change sets", async () => {
+    const getGitStatusMock = vi.mocked(getGitStatus);
+    getGitStatusMock
+      .mockResolvedValueOnce(makeStatus("main", 0, 0, 130))
+      .mockResolvedValueOnce(makeStatus("next", 0, 0, 130));
+
+    const { unmount } = renderHook(
+      ({ active }: { active: WorkspaceInfo | null }) => useGitStatus(active),
+      { initialProps: { active: workspace } },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(9000);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(2);
+
+    unmount();
+  });
+
+  it("uses delayed background polling mode", async () => {
+    const getGitStatusMock = vi.mocked(getGitStatus);
+    getGitStatusMock.mockResolvedValue(makeStatus("main", 0, 0, 1));
+
+    const { unmount } = renderHook(
+      ({ active }: { active: WorkspaceInfo | null }) =>
+        useGitStatus(active, { pollingMode: "background" }),
+      { initialProps: { active: workspace } },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(29999);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+
+    unmount();
+  });
+
+  it("supports paused polling with manual refresh", async () => {
+    const getGitStatusMock = vi.mocked(getGitStatus);
+    getGitStatusMock.mockResolvedValueOnce(makeStatus("manual", 5, 2, 1));
+
+    const { result, unmount } = renderHook(
+      ({ active }: { active: WorkspaceInfo | null }) =>
+        useGitStatus(active, { pollingMode: "paused" }),
+      { initialProps: { active: workspace } },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+    expect(result.current.status.branchName).toBe("manual");
+
+    unmount();
+  });
+
+  it("does not overlap status requests while previous request is running", async () => {
+    const getGitStatusMock = vi.mocked(getGitStatus);
+    let resolveFirst: (value: ReturnType<typeof makeStatus>) => void;
+    const firstPromise = new Promise<ReturnType<typeof makeStatus>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    getGitStatusMock
+      .mockReturnValueOnce(firstPromise)
+      .mockResolvedValueOnce(makeStatus("next", 2, 1));
+
+    const { result, unmount } = renderHook(
+      ({ active }: { active: WorkspaceInfo | null }) => useGitStatus(active),
+      { initialProps: { active: workspace } },
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(12000);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst(makeStatus("main", 1, 0));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
+    expect(getGitStatusMock).toHaveBeenCalledTimes(2);
+    expect(result.current.status.branchName).toBe("next");
 
     unmount();
   });

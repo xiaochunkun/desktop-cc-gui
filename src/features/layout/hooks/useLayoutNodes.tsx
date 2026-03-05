@@ -262,6 +262,7 @@ type LayoutNodesOptions = {
   tabletNavTab: "codex" | "spec" | "git" | "log";
   gitPanelMode: "diff" | "log" | "issues" | "prs";
   onGitPanelModeChange: (mode: "diff" | "log" | "issues" | "prs") => void;
+  onOpenGitHistoryPanel: () => void;
   gitDiffViewStyle: "split" | "unified";
   gitDiffListView: GitDiffListView;
   onGitDiffListViewChange: (view: "flat" | "tree") => void;
@@ -275,6 +276,8 @@ type LayoutNodesOptions = {
   onFilePanelModeChange: (mode: "git" | "files" | "prompts" | "memory") => void;
   fileTreeLoading: boolean;
   onRefreshFiles?: () => void;
+  onToggleRuntimeConsole: () => void;
+  runtimeConsoleVisible: boolean;
   gitStatus: {
     branchName: string;
     files: GitFileStatus[];
@@ -450,6 +453,7 @@ type LayoutNodesOptions = {
   selectedAgent: SelectedAgentOption | null;
   onSelectAgent: (agent: SelectedAgentOption | null) => void;
   onOpenAgentSettings: () => void;
+  onOpenModelSettings: (providerId?: string) => void;
   opencodeVariantOptions: string[];
   selectedOpenCodeVariant: string | null;
   onSelectOpenCodeVariant: (variant: string | null) => void;
@@ -461,6 +465,7 @@ type LayoutNodesOptions = {
   files: string[];
   directories: string[];
   gitignoredFiles: Set<string>;
+  gitignoredDirectories: Set<string>;
   onInsertComposerText: (text: string) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   composerEditorSettings: ComposerEditorSettings;
@@ -849,6 +854,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       selectedAgent={composerSelectedAgent}
       onAgentSelect={options.onSelectAgent}
       onOpenAgentSettings={options.onOpenAgentSettings}
+      onOpenModelSettings={options.onOpenModelSettings}
       opencodeVariantOptions={options.opencodeVariantOptions}
       selectedOpenCodeVariant={options.selectedOpenCodeVariant}
       onSelectOpenCodeVariant={options.onSelectOpenCodeVariant}
@@ -1014,6 +1020,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         workspaceId={options.activeWorkspace.id}
         workspacePath={options.activeWorkspace.path}
         files={options.files}
+        directories={options.directories}
         isLoading={options.fileTreeLoading}
         filePanelMode={options.filePanelMode}
         onFilePanelModeChange={options.onFilePanelModeChange}
@@ -1023,8 +1030,13 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         openAppIconById={options.openAppIconById}
         selectedOpenAppId={options.selectedOpenAppId}
         onSelectOpenAppId={options.onSelectOpenAppId}
+        onToggleRuntimeConsole={options.onToggleRuntimeConsole}
+        isRuntimeConsoleVisible={options.runtimeConsoleVisible}
+        onOpenSpecHub={options.onOpenSpecHub}
+        isSpecHubActive={options.activeTab === "spec"}
         gitStatusFiles={options.gitStatus.files}
         gitignoredFiles={options.gitignoredFiles}
+        gitignoredDirectories={options.gitignoredDirectories}
         onRefreshFiles={options.onRefreshFiles}
       />
     );
@@ -1060,6 +1072,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         workspaceId={options.activeWorkspace?.id ?? null}
         mode={options.gitPanelMode}
         onModeChange={options.onGitPanelModeChange}
+        onOpenGitHistoryPanel={options.onOpenGitHistoryPanel}
+        isGitHistoryOpen={options.appMode === "gitHistory"}
         diffEntries={options.gitDiffs}
         gitDiffListView={options.gitDiffListView}
         onGitDiffListViewChange={options.onGitDiffListViewChange}

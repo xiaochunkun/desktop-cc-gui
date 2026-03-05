@@ -163,6 +163,7 @@ export interface ChatInputBoxAdapterProps {
   onRemoveContextChip?: (chip: ContextSelectionChip) => void;
   onAgentSelect?: (agent: SelectedAgent | null) => void;
   onOpenAgentSettings?: () => void;
+  onOpenModelSettings?: (providerId?: string) => void;
   hasMessages?: boolean;
   onRewind?: () => void;
   showRewindEntry?: boolean;
@@ -356,6 +357,7 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
       onRemoveContextChip,
       onAgentSelect,
       onOpenAgentSettings,
+      onOpenModelSettings,
       hasMessages,
       onRewind,
       showRewindEntry,
@@ -793,6 +795,7 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
         onAgentSelect={onAgentSelect}
         onClearAgent={onAgentSelect ? () => onAgentSelect?.(null) : undefined}
         onOpenAgentSettings={onOpenAgentSettings}
+        onOpenModelSettings={onOpenModelSettings}
         hasMessages={hasMessages}
         onRewind={onRewind}
         showRewindEntry={showRewindEntry}

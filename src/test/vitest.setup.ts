@@ -107,9 +107,32 @@ vi.mock("react-i18next", () => ({
         "settings.openReleaseNotes": "Open release notes",
         "settings.sidebarCodex": "Codex",
         "settings.sidebarExperimental": "Experimental",
+        "settings.basicAppearance": "Appearance",
+        "settings.basicBehavior": "Behavior",
         "settings.showRemainingLimits": "Show remaining Codex limits",
         "settings.reduceTransparency": "Reduce transparency",
+        "settings.fontSizeLabel": "Font size",
+        "settings.fontSizeLevel1": "Small (80%)",
+        "settings.fontSizeLevel2": "Smaller (90%)",
+        "settings.fontSizeLevel3": "Default (100%)",
+        "settings.fontSizeLevel4": "Larger (110%)",
+        "settings.fontSizeLevel5": "Large (120%)",
+        "settings.fontSizeLevel6": "Largest (140%)",
+        "settings.fontSizeCustom": "Custom ({{value}})",
         "settings.notificationSounds": "Notification sounds",
+        "settings.notificationSoundsEnabled": "Enabled",
+        "settings.notificationSoundsDisabled": "Disabled",
+        "settings.notificationSoundsHint": "When enabled, a notification sound plays when AI completes a task, even if you are away from the screen.",
+        "settings.soundSelectLabel": "Notification sound",
+        "settings.soundOptionDefault": "Default",
+        "settings.soundOptionChime": "Chime",
+        "settings.soundOptionBell": "Bell",
+        "settings.soundOptionDing": "Ding",
+        "settings.soundOptionSuccess": "Success",
+        "settings.soundOptionCustom": "Custom…",
+        "settings.soundCustomFileLabel": "Custom sound file",
+        "settings.soundCustomPlaceholder": "Select or enter audio file path",
+        "settings.soundCustomHint": "Supports WAV, MP3, AIFF formats.",
         "settings.systemNotification": "System Notifications",
         "settings.systemNotificationDesc": "Send system-level notifications when sessions complete, even when the window is not in focus.",
         // Common actions
@@ -178,7 +201,7 @@ vi.mock("react-i18next", () => ({
         "settings.codeFontSizeDesc": "Adjusts code and diff text size.",
         "settings.soundsSubtitle": "Sounds",
         "settings.soundsSubDescription": "Control notification audio alerts.",
-        "settings.notificationSoundsDesc": "Play a sound when a long-running agent finishes while the window is unfocused.",
+        "settings.notificationSoundsDesc": "Play a notification sound when AI completes a task.",
         // Composer section
         "settings.composerTitle": "Composer",
         "settings.composerDescription": "Control helpers and formatting behavior inside the message editor.",
@@ -471,12 +494,13 @@ if (!("requestAnimationFrame" in globalThis)) {
   });
 }
 
-const hasLocalStorage = "localStorage" in globalThis;
-const existingLocalStorage = hasLocalStorage
-  ? (globalThis as { localStorage?: Storage }).localStorage
-  : null;
+const localStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+const existingLocalStorage =
+  localStorageDescriptor && "value" in localStorageDescriptor
+    ? localStorageDescriptor.value
+    : null;
 
-if (!existingLocalStorage || typeof existingLocalStorage.clear !== "function") {
+if (!existingLocalStorage || typeof (existingLocalStorage as Storage).clear !== "function") {
   const store = new Map<string, string>();
   const localStorage = {
     getItem: (key: string) => (store.has(key) ? store.get(key) ?? null : null),

@@ -39,6 +39,7 @@ function makeProps(overrides?: Partial<Parameters<typeof useGitPanelController>[
     gitDiffPreloadEnabled: false,
     isCompact: false,
     isTablet: false,
+    rightPanelCollapsed: false,
     activeTab: "codex" as const,
     tabletTab: "codex" as const,
     setActiveTab: vi.fn(),
@@ -55,6 +56,34 @@ function getLastEnabledArg() {
     return undefined;
   }
   return calls[calls.length - 1]?.[2];
+}
+
+function getLastGitStatusPollingMode() {
+  const { calls } = useGitStatusMock.mock;
+  if (calls.length === 0) {
+    return undefined;
+  }
+  const options = calls[calls.length - 1]?.[1] as
+    | { pollingMode?: "active" | "background" | "paused" }
+    | undefined;
+  return options?.pollingMode;
+}
+
+function makeGitStatusWithFiles(fileCount: number) {
+  const files = Array.from({ length: fileCount }, (_, index) => ({
+    path: `src/file-${index}.ts`,
+    status: "M",
+    additions: 1,
+    deletions: 0,
+  }));
+  return {
+    branchName: "main",
+    files,
+    stagedFiles: files,
+    unstagedFiles: [],
+    totalAdditions: fileCount,
+    totalDeletions: 0,
+  };
 }
 
 beforeEach(() => {
@@ -93,6 +122,64 @@ beforeEach(() => {
     error: null,
   });
   useGitDiffsMock.mockClear();
+  useGitStatusMock.mockClear();
+  useGitLogMock.mockClear();
+  useGitCommitDiffsMock.mockClear();
+});
+
+describe("useGitPanelController git status polling visibility", () => {
+  it("uses active polling when file panel is visible", () => {
+    renderHook(() => useGitPanelController(makeProps()));
+
+    expect(getLastGitStatusPollingMode()).toBe("active");
+  });
+
+  it("uses background polling when right panel is collapsed", () => {
+    renderHook(() =>
+      useGitPanelController(
+        makeProps({
+          rightPanelCollapsed: true,
+        }),
+      ),
+    );
+
+    expect(getLastGitStatusPollingMode()).toBe("background");
+  });
+
+  it("switches to active polling when right panel expands", () => {
+    const { rerender } = renderHook(
+      (props: Parameters<typeof useGitPanelController>[0]) =>
+        useGitPanelController(props),
+      {
+        initialProps: makeProps({
+          rightPanelCollapsed: true,
+        }),
+      },
+    );
+
+    expect(getLastGitStatusPollingMode()).toBe("background");
+
+    rerender(
+      makeProps({
+        rightPanelCollapsed: false,
+      }),
+    );
+    expect(getLastGitStatusPollingMode()).toBe("active");
+  });
+
+  it("uses active polling in compact git tab", () => {
+    renderHook(() =>
+      useGitPanelController(
+        makeProps({
+          isCompact: true,
+          activeTab: "git",
+          tabletTab: "git",
+        }),
+      ),
+    );
+
+    expect(getLastGitStatusPollingMode()).toBe("active");
+  });
 });
 
 describe("useGitPanelController preload behavior", () => {
@@ -126,6 +213,27 @@ describe("useGitPanelController preload behavior", () => {
 
     const visibleEnabled = getLastEnabledArg();
     expect(visibleEnabled).toBe(true);
+  });
+
+  it("skips background preload when changed files are too many", () => {
+    useGitStatusMock.mockReturnValue({
+      status: makeGitStatusWithFiles(120),
+      refresh: vi.fn(),
+    });
+    const { result } = renderHook(() =>
+      useGitPanelController(
+        makeProps({
+          gitDiffPreloadEnabled: true,
+        }),
+      ),
+    );
+
+    act(() => {
+      result.current.setGitPanelMode("issues");
+    });
+
+    const lastEnabled = getLastEnabledArg();
+    expect(lastEnabled).toBe(false);
   });
 });
 

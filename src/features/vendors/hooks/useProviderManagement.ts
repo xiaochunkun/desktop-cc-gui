@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect } from "react";
-import type { ProviderConfig } from "../types";
+import type { ClaudeCurrentConfig, ProviderConfig } from "../types";
 import {
   getClaudeProviders,
   addClaudeProvider,
   updateClaudeProvider,
   deleteClaudeProvider,
   switchClaudeProvider,
+  getCurrentClaudeConfig,
 } from "../../../services/tauri";
 import { STORAGE_KEYS } from "../../models/constants";
 
@@ -22,6 +23,10 @@ export interface DeleteConfirmState {
 export function useProviderManagement() {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentConfig, setCurrentConfig] = useState<ClaudeCurrentConfig | null>(
+    null,
+  );
+  const [currentConfigLoading, setCurrentConfigLoading] = useState(false);
 
   const [providerDialog, setProviderDialog] = useState<ProviderDialogState>({
     isOpen: false,
@@ -37,14 +42,28 @@ export function useProviderManagement() {
     (provider?: ProviderConfig | null) => {
       if (typeof window === "undefined" || !window.localStorage) return;
       const storageKey = STORAGE_KEYS.CLAUDE_MODEL_MAPPING;
+      const legacyStorageKeys = [
+        "mossx-claude-model-mapping",
+        "codemoss-claude-model-mapping",
+      ];
       if (!provider?.settingsConfig?.env) {
         try {
           window.localStorage.removeItem(storageKey);
+          for (const key of legacyStorageKeys) {
+            window.localStorage.removeItem(key);
+          }
           window.dispatchEvent(
             new CustomEvent("localStorageChange", {
               detail: { key: storageKey },
             }),
           );
+          for (const key of legacyStorageKeys) {
+            window.dispatchEvent(
+              new CustomEvent("localStorageChange", {
+                detail: { key },
+              }),
+            );
+          }
         } catch {
           // ignore
         }
@@ -62,20 +81,41 @@ export function useProviderManagement() {
       );
       try {
         if (hasValue) {
-          window.localStorage.setItem(storageKey, JSON.stringify(mapping));
+          const serialized = JSON.stringify(mapping);
+          window.localStorage.setItem(storageKey, serialized);
+          for (const key of legacyStorageKeys) {
+            window.localStorage.setItem(key, serialized);
+          }
           // Dispatch custom event so useModels picks it up in the same tab
           window.dispatchEvent(
             new CustomEvent("localStorageChange", {
               detail: { key: storageKey },
             }),
           );
+          for (const key of legacyStorageKeys) {
+            window.dispatchEvent(
+              new CustomEvent("localStorageChange", {
+                detail: { key },
+              }),
+            );
+          }
         } else {
           window.localStorage.removeItem(storageKey);
+          for (const key of legacyStorageKeys) {
+            window.localStorage.removeItem(key);
+          }
           window.dispatchEvent(
             new CustomEvent("localStorageChange", {
               detail: { key: storageKey },
             }),
           );
+          for (const key of legacyStorageKeys) {
+            window.dispatchEvent(
+              new CustomEvent("localStorageChange", {
+                detail: { key },
+              }),
+            );
+          }
         }
       } catch {
         // ignore
@@ -90,9 +130,7 @@ export function useProviderManagement() {
       const list = await getClaudeProviders();
       setProviders(list);
       const active = list.find((p: ProviderConfig) => p.isActive);
-      if (active) {
-        syncActiveProviderModelMapping(active);
-      }
+      syncActiveProviderModelMapping(active ?? null);
     } catch {
       // ignore
     } finally {
@@ -100,9 +138,21 @@ export function useProviderManagement() {
     }
   }, [syncActiveProviderModelMapping]);
 
+  const loadCurrentConfig = useCallback(async () => {
+    setCurrentConfigLoading(true);
+    try {
+      const config = await getCurrentClaudeConfig();
+      setCurrentConfig(config as ClaudeCurrentConfig);
+    } catch {
+      setCurrentConfig(null);
+    } finally {
+      setCurrentConfigLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    void loadProviders();
-  }, [loadProviders]);
+    void Promise.all([loadProviders(), loadCurrentConfig()]);
+  }, [loadProviders, loadCurrentConfig]);
 
   const handleEditProvider = useCallback((provider: ProviderConfig) => {
     setProviderDialog({ isOpen: true, provider });
@@ -172,7 +222,7 @@ export function useProviderManagement() {
         }
 
         setProviderDialog({ isOpen: false, provider: null });
-        await loadProviders();
+        await Promise.all([loadProviders(), loadCurrentConfig()]);
         return true;
       } catch {
         return false;
@@ -183,6 +233,7 @@ export function useProviderManagement() {
       providers,
       syncActiveProviderModelMapping,
       loadProviders,
+      loadCurrentConfig,
     ],
   );
 
@@ -195,12 +246,12 @@ export function useProviderManagement() {
         if (target) {
           syncActiveProviderModelMapping(target);
         }
-        await loadProviders();
+        await Promise.all([loadProviders(), loadCurrentConfig()]);
       } catch {
         // ignore
       }
     },
-    [providers, syncActiveProviderModelMapping, loadProviders],
+    [providers, syncActiveProviderModelMapping, loadProviders, loadCurrentConfig],
   );
 
   const handleDeleteProvider = useCallback((provider: ProviderConfig) => {
@@ -213,12 +264,12 @@ export function useProviderManagement() {
 
     try {
       await deleteClaudeProvider(provider.id);
-      await loadProviders();
+      await Promise.all([loadProviders(), loadCurrentConfig()]);
     } catch {
       // ignore
     }
     setDeleteConfirm({ isOpen: false, provider: null });
-  }, [deleteConfirm.provider, loadProviders]);
+  }, [deleteConfirm.provider, loadProviders, loadCurrentConfig]);
 
   const cancelDeleteProvider = useCallback(() => {
     setDeleteConfirm({ isOpen: false, provider: null });
@@ -227,9 +278,12 @@ export function useProviderManagement() {
   return {
     providers,
     loading,
+    currentConfig,
+    currentConfigLoading,
     providerDialog,
     deleteConfirm,
     loadProviders,
+    loadCurrentConfig,
     handleEditProvider,
     handleAddProvider,
     handleCloseProviderDialog,

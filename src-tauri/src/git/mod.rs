@@ -33,6 +33,7 @@ const MAX_COMMIT_DIFF_LINES: usize = 10_000;
 const GIT_COMMAND_TIMEOUT_SECS: u64 = 120;
 const PR_RANGE_MAX_CHANGED_FILES: usize = 240;
 const PR_RANGE_SUSPICIOUS_THRESHOLD: usize = 32;
+const GIT_STATUS_DIFF_STATS_FILE_LIMIT: usize = 120;
 
 fn trim_lowercase(input: Option<String>) -> Option<String> {
     input
@@ -1249,6 +1250,7 @@ pub(crate) async fn get_git_status(
     let statuses = repo
         .statuses(Some(&mut status_options))
         .map_err(|e| e.to_string())?;
+    let should_compute_diff_stats = statuses.len() <= GIT_STATUS_DIFF_STATS_FILE_LIMIT;
 
     let head_tree = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
     let index = repo.index().ok();
@@ -1290,8 +1292,12 @@ pub(crate) async fn get_git_status(
         let mut combined_deletions = 0i64;
 
         if include_index {
-            let (additions, deletions) =
-                diff_stats_for_path(&repo, head_tree.as_ref(), path, true, false).unwrap_or((0, 0));
+            let (additions, deletions) = if should_compute_diff_stats {
+                diff_stats_for_path(&repo, head_tree.as_ref(), path, true, false)
+                    .unwrap_or((0, 0))
+            } else {
+                (0, 0)
+            };
             if let Some(status_str) = status_for_index(status) {
                 staged_files.push(GitFileStatus {
                     path: normalized_path.clone(),
@@ -1307,8 +1313,12 @@ pub(crate) async fn get_git_status(
         }
 
         if include_workdir {
-            let (additions, deletions) =
-                diff_stats_for_path(&repo, head_tree.as_ref(), path, false, true).unwrap_or((0, 0));
+            let (additions, deletions) = if should_compute_diff_stats {
+                diff_stats_for_path(&repo, head_tree.as_ref(), path, false, true)
+                    .unwrap_or((0, 0))
+            } else {
+                (0, 0)
+            };
             if let Some(status_str) = status_for_workdir(status) {
                 unstaged_files.push(GitFileStatus {
                     path: normalized_path.clone(),

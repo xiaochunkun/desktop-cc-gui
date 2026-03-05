@@ -23,11 +23,32 @@ const emptyStatus: GitStatusState = {
 };
 
 const REFRESH_INTERVAL_MS = 3000;
-export function useGitStatus(activeWorkspace: WorkspaceInfo | null) {
+const HEAVY_CHANGESET_FILE_THRESHOLD = 120;
+const HEAVY_CHANGESET_REFRESH_INTERVAL_MS = 12000;
+const BACKGROUND_REFRESH_INTERVAL_MS = 30000;
+const HEAVY_CHANGESET_BACKGROUND_REFRESH_INTERVAL_MS = 60000;
+
+export type GitStatusPollingMode = "active" | "background" | "paused";
+
+type UseGitStatusOptions = {
+  pollingEnabled?: boolean;
+  pollingMode?: GitStatusPollingMode;
+};
+
+export function useGitStatus(
+  activeWorkspace: WorkspaceInfo | null,
+  options?: UseGitStatusOptions,
+) {
+  const pollingMode: GitStatusPollingMode =
+    options?.pollingMode ??
+    (options?.pollingEnabled === false ? "paused" : "active");
   const [status, setStatus] = useState<GitStatusState>(emptyStatus);
   const requestIdRef = useRef(0);
   const workspaceIdRef = useRef<string | null>(activeWorkspace?.id ?? null);
   const cachedStatusRef = useRef<Map<string, GitStatusState>>(new Map());
+  const statusRef = useRef<GitStatusState>(emptyStatus);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const inFlightRequestIdRef = useRef<number | null>(null);
   const workspaceId = activeWorkspace?.id ?? null;
 
   const resolveBranchName = useCallback(
@@ -44,15 +65,38 @@ export function useGitStatus(activeWorkspace: WorkspaceInfo | null) {
     [],
   );
 
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  const resolveNextRefreshInterval = useCallback(() => {
+    const changedFileCount = statusRef.current.files.length;
+    if (pollingMode === "background") {
+      if (changedFileCount >= HEAVY_CHANGESET_FILE_THRESHOLD) {
+        return HEAVY_CHANGESET_BACKGROUND_REFRESH_INTERVAL_MS;
+      }
+      return BACKGROUND_REFRESH_INTERVAL_MS;
+    }
+    if (changedFileCount >= HEAVY_CHANGESET_FILE_THRESHOLD) {
+      return HEAVY_CHANGESET_REFRESH_INTERVAL_MS;
+    }
+    return REFRESH_INTERVAL_MS;
+  }, [pollingMode]);
+
   const refresh = useCallback(() => {
     if (!workspaceId) {
       setStatus(emptyStatus);
-      return;
+      return Promise.resolve();
+    }
+    if (inFlightRef.current) {
+      return inFlightRef.current;
     }
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    return getGitStatus(workspaceId)
-      .then((data) => {
+    const currentRequestId = requestId;
+    const inFlight = (async () => {
+      try {
+        const data = await getGitStatus(workspaceId);
         if (
           requestIdRef.current !== requestId ||
           workspaceIdRef.current !== workspaceId
@@ -68,8 +112,7 @@ export function useGitStatus(activeWorkspace: WorkspaceInfo | null) {
         };
         setStatus(nextStatus);
         cachedStatusRef.current.set(workspaceId, nextStatus);
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("Failed to load git status", err);
         if (
           requestIdRef.current !== requestId ||
@@ -83,13 +126,24 @@ export function useGitStatus(activeWorkspace: WorkspaceInfo | null) {
           ? { ...cached, error: message }
           : { ...emptyStatus, branchName: "unknown", error: message };
         setStatus(nextStatus);
-      });
+      } finally {
+        if (inFlightRequestIdRef.current === currentRequestId) {
+          inFlightRef.current = null;
+          inFlightRequestIdRef.current = null;
+        }
+      }
+    })();
+    inFlightRequestIdRef.current = currentRequestId;
+    inFlightRef.current = inFlight;
+    return inFlight;
   }, [resolveBranchName, workspaceId]);
 
   useEffect(() => {
     if (workspaceIdRef.current !== workspaceId) {
       workspaceIdRef.current = workspaceId;
       requestIdRef.current += 1;
+      inFlightRef.current = null;
+      inFlightRequestIdRef.current = null;
       if (!workspaceId) {
         setStatus(emptyStatus);
         return;
@@ -104,18 +158,42 @@ export function useGitStatus(activeWorkspace: WorkspaceInfo | null) {
       setStatus(emptyStatus);
       return;
     }
+    if (pollingMode === "paused") {
+      return;
+    }
 
-    const fetchStatus = () => {
-      refresh()?.catch(() => {});
+    let cancelled = false;
+    let timeoutId = 0;
+    const runAndSchedule = () => {
+      if (cancelled) {
+        return;
+      }
+      refresh()
+        .catch(() => {})
+        .finally(() => {
+          if (cancelled) {
+            return;
+          }
+          const delayMs = resolveNextRefreshInterval();
+          timeoutId = window.setTimeout(() => {
+            runAndSchedule();
+          }, delayMs);
+        });
     };
-
-    fetchStatus();
-    const interval = window.setInterval(fetchStatus, REFRESH_INTERVAL_MS);
+    if (pollingMode === "background") {
+      const delayMs = resolveNextRefreshInterval();
+      timeoutId = window.setTimeout(() => {
+        runAndSchedule();
+      }, delayMs);
+    } else {
+      runAndSchedule();
+    }
 
     return () => {
-      window.clearInterval(interval);
+      cancelled = true;
+      window.clearTimeout(timeoutId);
     };
-  }, [refresh, workspaceId]);
+  }, [pollingMode, refresh, resolveNextRefreshInterval, workspaceId]);
 
   return { status, refresh };
 }

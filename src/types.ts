@@ -186,6 +186,8 @@ export type AppSettings = {
   codeFontFamily: string;
   codeFontSize: number;
   notificationSoundsEnabled: boolean;
+  notificationSoundId: string;
+  notificationSoundCustomPath: string;
   systemNotificationEnabled: boolean;
   preloadGitDiffs: boolean;
   experimentalCollabEnabled: boolean;
@@ -594,6 +596,73 @@ export type LocalUsageSnapshot = {
   days: LocalUsageDay[];
   totals: LocalUsageTotals;
   topModels: LocalUsageModel[];
+};
+
+export type LocalUsageUsageData = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+};
+
+export type LocalUsageSessionSummary = {
+  sessionId: string;
+  timestamp: number;
+  model: string;
+  usage: LocalUsageUsageData;
+  cost: number;
+  summary?: string | null;
+};
+
+export type LocalUsageDailyUsage = {
+  date: string;
+  sessions: number;
+  usage: LocalUsageUsageData;
+  cost: number;
+  modelsUsed: string[];
+};
+
+export type LocalUsageModelUsage = {
+  model: string;
+  totalCost: number;
+  totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  sessionCount: number;
+};
+
+export type LocalUsageWeekData = {
+  sessions: number;
+  cost: number;
+  tokens: number;
+};
+
+export type LocalUsageTrends = {
+  sessions: number;
+  cost: number;
+  tokens: number;
+};
+
+export type LocalUsageWeeklyComparison = {
+  currentWeek: LocalUsageWeekData;
+  lastWeek: LocalUsageWeekData;
+  trends: LocalUsageTrends;
+};
+
+export type LocalUsageStatistics = {
+  projectPath: string;
+  projectName: string;
+  totalSessions: number;
+  totalUsage: LocalUsageUsageData;
+  estimatedCost: number;
+  sessions: LocalUsageSessionSummary[];
+  dailyUsage: LocalUsageDailyUsage[];
+  weeklyComparison: LocalUsageWeeklyComparison;
+  byModel: LocalUsageModelUsage[];
+  lastUpdated: number;
 };
 
 export type TurnPlanStepStatus = "pending" | "inProgress" | "completed";

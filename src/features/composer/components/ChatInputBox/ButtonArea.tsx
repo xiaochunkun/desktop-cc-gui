@@ -233,6 +233,14 @@ export const ButtonArea = ({
     onSelectCollaborationMode(isPlanModeEnabled ? 'code' : 'plan');
   }, [isPlanModeEnabled, onSelectCollaborationMode]);
 
+  const handleAddModel = useCallback(() => {
+    if (!onAddModel) {
+      return;
+    }
+    const targetProvider = currentProvider === "codex" ? "codex" : "claude";
+    onAddModel(targetProvider);
+  }, [currentProvider, onAddModel]);
+
   return (
     <div className="button-area" data-provider={currentProvider}>
       {/* Left side: selectors */}
@@ -256,7 +264,18 @@ export const ButtonArea = ({
           onOpenAgentSettings={onOpenAgentSettings}
         />
         <ModeSelect value={permissionMode} onChange={onModeSelect ?? NOOP_MODE} provider={currentProvider} />
-        <ModelSelect value={selectedModel} onChange={onModelSelect ?? NOOP_MODEL} models={availableModels} currentProvider={currentProvider} onAddModel={onAddModel} />
+        <ModelSelect
+          value={selectedModel}
+          onChange={onModelSelect ?? NOOP_MODEL}
+          models={availableModels}
+          currentProvider={currentProvider}
+          onAddModel={
+            onAddModel &&
+            (currentProvider === "claude" || currentProvider === "codex")
+              ? handleAddModel
+              : undefined
+          }
+        />
         {currentProvider === 'codex' && (
           <ReasoningSelect value={reasoningEffort} onChange={onReasoningChange ?? NOOP_REASONING} />
         )}

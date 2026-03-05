@@ -26,8 +26,13 @@ export interface ModelMapping {
  */
 export const STORAGE_KEYS = {
   /** Storage key for Claude model name mapping */
-  CLAUDE_MODEL_MAPPING: "mossx-claude-model-mapping",
+  CLAUDE_MODEL_MAPPING: "claude-model-mapping",
 } as const;
+
+const LEGACY_CLAUDE_MODEL_MAPPING_KEYS = [
+  "mossx-claude-model-mapping",
+  "codemoss-claude-model-mapping",
+] as const;
 
 /**
  * Mapping from model ID to mapping key
@@ -64,27 +69,36 @@ export function getModelMapping(): ModelMapping {
   if (typeof window === "undefined" || !window.localStorage) {
     return {};
   }
+  const candidateKeys = [
+    STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
+    ...LEGACY_CLAUDE_MODEL_MAPPING_KEYS,
+  ];
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEYS.CLAUDE_MODEL_MAPPING);
-    if (!stored) {
-      return {};
+    for (const key of candidateKeys) {
+      const stored = window.localStorage.getItem(key);
+      if (!stored) {
+        continue;
+      }
+      const parsed = JSON.parse(stored);
+      // Basic validation: ensure all values are strings if present
+      const mapping: ModelMapping = {};
+      if (typeof parsed.main === "string" && parsed.main.trim()) {
+        mapping.main = parsed.main.trim();
+      }
+      if (typeof parsed.haiku === "string" && parsed.haiku.trim()) {
+        mapping.haiku = parsed.haiku.trim();
+      }
+      if (typeof parsed.sonnet === "string" && parsed.sonnet.trim()) {
+        mapping.sonnet = parsed.sonnet.trim();
+      }
+      if (typeof parsed.opus === "string" && parsed.opus.trim()) {
+        mapping.opus = parsed.opus.trim();
+      }
+      if (Object.keys(mapping).length > 0 || key === STORAGE_KEYS.CLAUDE_MODEL_MAPPING) {
+        return mapping;
+      }
     }
-    const parsed = JSON.parse(stored);
-    // Basic validation: ensure all values are strings if present
-    const mapping: ModelMapping = {};
-    if (typeof parsed.main === "string" && parsed.main.trim()) {
-      mapping.main = parsed.main.trim();
-    }
-    if (typeof parsed.haiku === "string" && parsed.haiku.trim()) {
-      mapping.haiku = parsed.haiku.trim();
-    }
-    if (typeof parsed.sonnet === "string" && parsed.sonnet.trim()) {
-      mapping.sonnet = parsed.sonnet.trim();
-    }
-    if (typeof parsed.opus === "string" && parsed.opus.trim()) {
-      mapping.opus = parsed.opus.trim();
-    }
-    return mapping;
+    return {};
   } catch {
     return {};
   }
@@ -98,10 +112,11 @@ export function saveModelMapping(mapping: ModelMapping): void {
     return;
   }
   try {
-    window.localStorage.setItem(
-      STORAGE_KEYS.CLAUDE_MODEL_MAPPING,
-      JSON.stringify(mapping),
-    );
+    const serialized = JSON.stringify(mapping);
+    window.localStorage.setItem(STORAGE_KEYS.CLAUDE_MODEL_MAPPING, serialized);
+    for (const legacyKey of LEGACY_CLAUDE_MODEL_MAPPING_KEYS) {
+      window.localStorage.setItem(legacyKey, serialized);
+    }
   } catch {
     // Silently fail if localStorage is not available
   }

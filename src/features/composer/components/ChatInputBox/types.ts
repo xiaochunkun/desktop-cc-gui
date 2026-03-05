@@ -552,7 +552,7 @@ export interface ChatInputBoxProps {
   /** Open prompt settings callback */
   onOpenPromptSettings?: () => void;
   /** Open model settings (navigate to provider management to add models) */
-  onOpenModelSettings?: () => void;
+  onOpenModelSettings?: (providerId?: string) => void;
 
   /** Whether has messages (for rewind button display) */
   hasMessages?: boolean;
@@ -659,7 +659,7 @@ export interface ButtonAreaProps {
   /** Open agent settings callback */
   onOpenAgentSettings?: () => void;
   /** Navigate to model management to add models */
-  onAddModel?: () => void;
+  onAddModel?: (providerId?: string) => void;
 }
 
 /**

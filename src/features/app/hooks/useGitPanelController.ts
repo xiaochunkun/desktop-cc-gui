@@ -7,6 +7,7 @@ import { useGitCommitDiffs } from "../../git/hooks/useGitCommitDiffs";
 import { getClientStoreSync, writeClientStoreValue } from "../../../services/clientStorage";
 
 const GIT_DIFF_LIST_VIEW_BY_WORKSPACE_KEY = "gitDiffListViewByWorkspace";
+const GIT_DIFF_PRELOAD_MAX_CHANGED_FILES = 80;
 
 function readGitDiffListView(workspaceId: string | null | undefined): "flat" | "tree" {
   if (!workspaceId) {
@@ -34,6 +35,7 @@ export function useGitPanelController({
   gitDiffPreloadEnabled,
   isCompact,
   isTablet,
+  rightPanelCollapsed,
   activeTab,
   tabletTab,
   setActiveTab,
@@ -45,6 +47,7 @@ export function useGitPanelController({
   gitDiffPreloadEnabled: boolean;
   isCompact: boolean;
   isTablet: boolean;
+  rightPanelCollapsed: boolean;
   activeTab: "projects" | "codex" | "spec" | "git" | "log";
   tabletTab: "codex" | "spec" | "git" | "log";
   setActiveTab: (tab: "projects" | "codex" | "spec" | "git" | "log") => void;
@@ -81,9 +84,16 @@ export function useGitPanelController({
   const [diffSource, setDiffSource] = useState<"local" | "pr" | "commit">(
     "local",
   );
+  const compactTab = isTablet ? tabletTab : activeTab;
+  const isGitStatusPollingActive = isCompact
+    ? compactTab === "git"
+    : centerMode === "diff" ||
+      (!rightPanelCollapsed &&
+        (filePanelMode === "git" || filePanelMode === "files"));
 
   const { status: gitStatus, refresh: refreshGitStatus } = useGitStatus(
     activeWorkspace,
+    { pollingMode: isGitStatusPollingActive ? "active" : "background" },
   );
   const gitStatusRefreshTimeoutRef = useRef<number | null>(null);
   const activeWorkspaceIdRef = useRef<string | null>(activeWorkspace?.id ?? null);
@@ -127,14 +137,14 @@ export function useGitPanelController({
   }, [refreshGitStatus]);
 
   const preloadedWorkspaceIdsRef = useRef<Set<string>>(new Set());
-  const compactTab = isTablet ? tabletTab : activeTab;
   const diffUiVisible =
     centerMode === "diff" ||
     (isCompact ? compactTab === "git" : gitPanelMode === "diff");
   const shouldPreloadDiffs = Boolean(
     gitDiffPreloadEnabled &&
       activeWorkspace &&
-      !preloadedWorkspaceIdsRef.current.has(activeWorkspace.id),
+      !preloadedWorkspaceIdsRef.current.has(activeWorkspace.id) &&
+      gitStatus.files.length <= GIT_DIFF_PRELOAD_MAX_CHANGED_FILES,
   );
   const shouldLoadLocalDiffs =
     Boolean(activeWorkspace) &&

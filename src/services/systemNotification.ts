@@ -9,6 +9,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 let permissionCached: boolean | null = null;
 let actionListenerRegistered = false;
+let actionListenerInitAttempted = false;
 
 type NotificationActionHandler = (extra: Record<string, unknown>) => void;
 let actionHandler: NotificationActionHandler | null = null;
@@ -37,23 +38,24 @@ async function ensurePermission(): Promise<boolean> {
 }
 
 function registerActionListener() {
-  if (actionListenerRegistered || !isTauri()) {
+  if (actionListenerRegistered || actionListenerInitAttempted || !isTauri()) {
     return;
   }
-  actionListenerRegistered = true;
+  actionListenerInitAttempted = true;
   void onAction(async (notification) => {
-    // Focus the main window when notification is clicked
     try {
       const window = getCurrentWindow();
       await window.show();
       await window.setFocus();
-    } catch {
-      // Ignore window focus errors
-    }
+    } catch {}
     if (actionHandler && notification.extra) {
       actionHandler(notification.extra);
     }
-  });
+  })
+    .then(() => {
+      actionListenerRegistered = true;
+    })
+    .catch(() => {});
 }
 
 export function setNotificationActionHandler(handler: NotificationActionHandler) {
@@ -86,6 +88,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     permissionCached = null;
     actionListenerRegistered = false;
+    actionListenerInitAttempted = false;
     actionHandler = null;
   });
 }

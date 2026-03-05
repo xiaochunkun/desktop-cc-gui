@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Local, TimeZone, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,7 +10,9 @@ use tauri::State;
 use crate::codex::home::{resolve_default_codex_home, resolve_workspace_codex_home};
 use crate::state::AppState;
 use crate::types::{
-    LocalUsageDay, LocalUsageModel, LocalUsageSnapshot, LocalUsageTotals, WorkspaceEntry,
+    LocalUsageDailyUsage, LocalUsageDay, LocalUsageModel, LocalUsageModelUsage, LocalUsageSessionSummary,
+    LocalUsageSnapshot, LocalUsageStatistics, LocalUsageTotals, LocalUsageTrends, LocalUsageUsageData,
+    LocalUsageWeekData, LocalUsageWeeklyComparison, WorkspaceEntry,
 };
 
 #[derive(Default, Clone, Copy)]
@@ -30,6 +32,15 @@ struct UsageTotals {
 }
 
 const MAX_ACTIVITY_GAP_MS: i64 = 2 * 60 * 1000;
+const USAGE_LIMIT_SESSIONS: usize = 200;
+
+#[derive(Default, Clone, Copy)]
+struct CostRates {
+    input: f64,
+    output: f64,
+    cache_write: f64,
+    cache_read: f64,
+}
 
 #[tauri::command]
 pub(crate) async fn local_usage_snapshot(
@@ -56,6 +67,110 @@ pub(crate) async fn local_usage_snapshot(
     .await
     .map_err(|err| err.to_string())??;
     Ok(snapshot)
+}
+
+#[tauri::command]
+pub(crate) async fn local_usage_statistics(
+    scope: Option<String>,
+    provider: Option<String>,
+    date_range: Option<String>,
+    workspace_path: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<LocalUsageStatistics, String> {
+    let scope = scope.unwrap_or_else(|| "current".to_string());
+    let provider = provider.unwrap_or_else(|| "claude".to_string());
+    let date_range = date_range.unwrap_or_else(|| "7d".to_string());
+    let workspace_path = workspace_path.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(trimmed))
+        }
+    });
+    let filter_workspace = if scope == "current" {
+        workspace_path
+    } else {
+        None
+    };
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let cutoff_time = match date_range.as_str() {
+        "7d" => now_ms - 7 * 24 * 60 * 60 * 1000,
+        "30d" => now_ms - 30 * 24 * 60 * 60 * 1000,
+        _ => 0,
+    };
+    let project_path = if scope == "all" {
+        "all".to_string()
+    } else if let Some(path) = filter_workspace.as_ref() {
+        path.to_string_lossy().to_string()
+    } else {
+        "current".to_string()
+    };
+    let project_name = if scope == "all" {
+        "All Projects".to_string()
+    } else if let Some(path) = filter_workspace.as_ref() {
+        path.file_name()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Current Project")
+            .to_string()
+    } else {
+        "Current Project".to_string()
+    };
+
+    let sessions_roots = {
+        let workspaces = state.workspaces.lock().await;
+        resolve_sessions_roots(&workspaces, filter_workspace.as_deref())
+    };
+    let statistics = tokio::task::spawn_blocking(move || {
+        scan_local_usage_statistics(
+            &provider,
+            filter_workspace.as_deref(),
+            &sessions_roots,
+            cutoff_time,
+            project_path,
+            project_name,
+            now_ms,
+        )
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+
+    Ok(statistics)
+}
+
+fn scan_local_usage_statistics(
+    provider: &str,
+    workspace_path: Option<&Path>,
+    sessions_roots: &[PathBuf],
+    cutoff_time: i64,
+    project_path: String,
+    project_name: String,
+    now_ms: i64,
+) -> Result<LocalUsageStatistics, String> {
+    let mut sessions = if provider == "codex" {
+        scan_codex_session_summaries(workspace_path, sessions_roots)?
+    } else {
+        scan_claude_session_summaries(workspace_path)?
+    };
+
+    if cutoff_time > 0 {
+        sessions.retain(|session| session.timestamp >= cutoff_time);
+    }
+    sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    if provider != "codex" && sessions.len() > USAGE_LIMIT_SESSIONS {
+        sessions.truncate(USAGE_LIMIT_SESSIONS);
+    }
+
+    Ok(build_usage_statistics(
+        project_path,
+        project_name,
+        sessions,
+        now_ms,
+    ))
 }
 
 fn scan_local_usage(
@@ -190,6 +305,586 @@ fn build_snapshot(
         },
         top_models,
     }
+}
+
+fn build_usage_statistics(
+    project_path: String,
+    project_name: String,
+    sessions: Vec<LocalUsageSessionSummary>,
+    now_ms: i64,
+) -> LocalUsageStatistics {
+    let mut total_usage = LocalUsageUsageData::default();
+    let mut estimated_cost = 0.0;
+    let mut daily_map: HashMap<String, LocalUsageDailyUsage> = HashMap::new();
+    let mut model_map: HashMap<String, LocalUsageModelUsage> = HashMap::new();
+    let one_week_ago = now_ms - 7 * 24 * 60 * 60 * 1000;
+    let two_weeks_ago = now_ms - 14 * 24 * 60 * 60 * 1000;
+    let mut current_week = LocalUsageWeekData::default();
+    let mut last_week = LocalUsageWeekData::default();
+
+    for session in &sessions {
+        add_usage(&mut total_usage, &session.usage);
+        estimated_cost += session.cost;
+
+        let day_key = day_key_for_timestamp_ms(session.timestamp)
+            .unwrap_or_else(|| "1970-01-01".to_string());
+        let daily = daily_map
+            .entry(day_key.clone())
+            .or_insert_with(|| LocalUsageDailyUsage {
+                date: day_key.clone(),
+                ..LocalUsageDailyUsage::default()
+            });
+        daily.sessions += 1;
+        daily.cost += session.cost;
+        add_usage(&mut daily.usage, &session.usage);
+        if !daily.models_used.iter().any(|model| model == &session.model) {
+            daily.models_used.push(session.model.clone());
+        }
+
+        let model_usage = model_map
+            .entry(session.model.clone())
+            .or_insert_with(|| LocalUsageModelUsage {
+                model: session.model.clone(),
+                ..LocalUsageModelUsage::default()
+            });
+        model_usage.session_count += 1;
+        model_usage.total_cost += session.cost;
+        model_usage.total_tokens += session.usage.total_tokens;
+        model_usage.input_tokens += session.usage.input_tokens;
+        model_usage.output_tokens += session.usage.output_tokens;
+        model_usage.cache_creation_tokens += session.usage.cache_write_tokens;
+        model_usage.cache_read_tokens += session.usage.cache_read_tokens;
+
+        if session.timestamp >= one_week_ago {
+            current_week.sessions += 1;
+            current_week.cost += session.cost;
+            current_week.tokens += session.usage.total_tokens;
+        } else if session.timestamp >= two_weeks_ago {
+            last_week.sessions += 1;
+            last_week.cost += session.cost;
+            last_week.tokens += session.usage.total_tokens;
+        }
+    }
+
+    total_usage.total_tokens = total_usage.input_tokens
+        + total_usage.output_tokens
+        + total_usage.cache_write_tokens
+        + total_usage.cache_read_tokens;
+
+    let mut daily_usage: Vec<LocalUsageDailyUsage> = daily_map.into_values().collect();
+    daily_usage.sort_by(|a, b| a.date.cmp(&b.date));
+    let mut by_model: Vec<LocalUsageModelUsage> = model_map.into_values().collect();
+    by_model.sort_by(|a, b| b.total_cost.total_cmp(&a.total_cost));
+
+    LocalUsageStatistics {
+        project_path,
+        project_name,
+        total_sessions: sessions.len() as i64,
+        total_usage,
+        estimated_cost,
+        sessions,
+        daily_usage,
+        weekly_comparison: LocalUsageWeeklyComparison {
+            current_week: current_week.clone(),
+            last_week: last_week.clone(),
+            trends: LocalUsageTrends {
+                sessions: calculate_trend(current_week.sessions as f64, last_week.sessions as f64),
+                cost: calculate_trend(current_week.cost, last_week.cost),
+                tokens: calculate_trend(current_week.tokens as f64, last_week.tokens as f64),
+            },
+        },
+        by_model,
+        last_updated: now_ms,
+    }
+}
+
+fn calculate_trend(current: f64, last: f64) -> f64 {
+    if last == 0.0 {
+        return 0.0;
+    }
+    ((current - last) / last) * 100.0
+}
+
+fn add_usage(target: &mut LocalUsageUsageData, usage: &LocalUsageUsageData) {
+    target.input_tokens += usage.input_tokens;
+    target.output_tokens += usage.output_tokens;
+    target.cache_write_tokens += usage.cache_write_tokens;
+    target.cache_read_tokens += usage.cache_read_tokens;
+    target.total_tokens += usage.total_tokens;
+}
+
+fn calculate_usage_cost(usage: &LocalUsageUsageData, rates: CostRates) -> f64 {
+    let input_cost = (usage.input_tokens as f64 / 1_000_000.0) * rates.input;
+    let output_cost = (usage.output_tokens as f64 / 1_000_000.0) * rates.output;
+    let cache_write_cost = (usage.cache_write_tokens as f64 / 1_000_000.0) * rates.cache_write;
+    let cache_read_cost = (usage.cache_read_tokens as f64 / 1_000_000.0) * rates.cache_read;
+    input_cost + output_cost + cache_write_cost + cache_read_cost
+}
+
+fn codex_cost_rates() -> CostRates {
+    CostRates {
+        input: 3.0,
+        output: 15.0,
+        cache_write: 0.0,
+        cache_read: 0.30,
+    }
+}
+
+fn claude_cost_rates(model: &str) -> CostRates {
+    let model_lower = model.to_lowercase();
+    if model_lower.contains("opus-4") || model_lower.contains("claude-opus-4") {
+        return CostRates {
+            input: 15.0,
+            output: 75.0,
+            cache_write: 18.75,
+            cache_read: 1.50,
+        };
+    }
+    if model_lower.contains("haiku-4") || model_lower.contains("claude-haiku-4") {
+        return CostRates {
+            input: 0.8,
+            output: 4.0,
+            cache_write: 1.0,
+            cache_read: 0.08,
+        };
+    }
+    CostRates {
+        input: 3.0,
+        output: 15.0,
+        cache_write: 3.75,
+        cache_read: 0.30,
+    }
+}
+
+fn scan_codex_session_summaries(
+    workspace_path: Option<&Path>,
+    sessions_roots: &[PathBuf],
+) -> Result<Vec<LocalUsageSessionSummary>, String> {
+    let mut files = Vec::new();
+    let mut seen_files = HashSet::new();
+    for root in sessions_roots {
+        collect_jsonl_files(root, &mut files, &mut seen_files);
+    }
+
+    let mut sessions = Vec::new();
+    for file in files {
+        if let Some(summary) = parse_codex_session_summary(&file, workspace_path)? {
+            sessions.push(summary);
+        }
+    }
+    sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    Ok(sessions)
+}
+
+fn collect_jsonl_files(root: &Path, output: &mut Vec<PathBuf>, seen: &mut HashSet<PathBuf>) {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_jsonl_files(&path, output, seen);
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+            continue;
+        }
+        if seen.insert(path.clone()) {
+            output.push(path);
+        }
+    }
+}
+
+fn parse_codex_session_summary(
+    path: &Path,
+    workspace_path: Option<&Path>,
+) -> Result<Option<LocalUsageSessionSummary>, String> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+    let reader = BufReader::new(file);
+    let mut usage = LocalUsageUsageData::default();
+    let mut summary: Option<String> = None;
+    let mut model: Option<String> = None;
+    let mut first_timestamp = 0_i64;
+    let mut previous_totals: Option<UsageTotals> = None;
+    let mut match_known = workspace_path.is_none();
+    let mut matches_workspace = workspace_path.is_none();
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(_) => continue,
+        };
+        if line.len() > 512_000 {
+            continue;
+        }
+
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if first_timestamp == 0 {
+            first_timestamp = read_timestamp_ms(&value).unwrap_or(0);
+        }
+
+        let entry_type = value
+            .get("type")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+
+        if entry_type == "session_meta" || entry_type == "turn_context" {
+            if let Some(cwd) = extract_cwd(&value) {
+                if let Some(filter) = workspace_path {
+                    matches_workspace = path_matches_workspace(&cwd, filter);
+                    match_known = true;
+                    if !matches_workspace {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if entry_type == "turn_context" {
+            if model.is_none() {
+                model = extract_model_from_turn_context(&value);
+            }
+            continue;
+        }
+
+        if !matches_workspace {
+            if match_known {
+                break;
+            }
+            continue;
+        }
+
+        if workspace_path.is_some() && !match_known {
+            continue;
+        }
+
+        if summary.is_none() && entry_type == "event_msg" {
+            if let Some(payload) = value.get("payload").and_then(|payload| payload.as_object()) {
+                let payload_type = payload
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+                if payload_type == "user_message" {
+                    if let Some(message) = payload.get("message").and_then(|value| value.as_str()) {
+                        summary = truncate_summary(message);
+                    }
+                }
+            }
+        }
+
+        if !(entry_type == "event_msg" || entry_type.is_empty()) {
+            continue;
+        }
+        let payload = value.get("payload").and_then(|value| value.as_object());
+        let payload_type = payload
+            .and_then(|payload| payload.get("type"))
+            .and_then(|value| value.as_str());
+        if payload_type != Some("token_count") {
+            continue;
+        }
+
+        let info = payload
+            .and_then(|payload| payload.get("info"))
+            .and_then(|value| value.as_object());
+        let (input, cached, output, used_total) = if let Some(info) = info {
+            if let Some(total) = find_usage_map(info, &["total_token_usage", "totalTokenUsage"]) {
+                (
+                    read_i64(total, &["input_tokens", "inputTokens"]),
+                    read_i64(
+                        total,
+                        &[
+                            "cached_input_tokens",
+                            "cache_read_input_tokens",
+                            "cachedInputTokens",
+                            "cacheReadInputTokens",
+                        ],
+                    ),
+                    read_i64(total, &["output_tokens", "outputTokens"]),
+                    true,
+                )
+            } else if let Some(last) = find_usage_map(info, &["last_token_usage", "lastTokenUsage"])
+            {
+                (
+                    read_i64(last, &["input_tokens", "inputTokens"]),
+                    read_i64(
+                        last,
+                        &[
+                            "cached_input_tokens",
+                            "cache_read_input_tokens",
+                            "cachedInputTokens",
+                            "cacheReadInputTokens",
+                        ],
+                    ),
+                    read_i64(last, &["output_tokens", "outputTokens"]),
+                    false,
+                )
+            } else {
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        let mut delta = UsageTotals {
+            input,
+            cached,
+            output,
+        };
+        if used_total {
+            let prev = previous_totals.unwrap_or_default();
+            delta = UsageTotals {
+                input: (input - prev.input).max(0),
+                cached: (cached - prev.cached).max(0),
+                output: (output - prev.output).max(0),
+            };
+            previous_totals = Some(UsageTotals {
+                input,
+                cached,
+                output,
+            });
+        } else {
+            let mut next = previous_totals.unwrap_or_default();
+            next.input += delta.input;
+            next.cached += delta.cached;
+            next.output += delta.output;
+            previous_totals = Some(next);
+        }
+
+        if delta.input == 0 && delta.cached == 0 && delta.output == 0 {
+            continue;
+        }
+
+        usage.input_tokens += delta.input.max(0);
+        usage.output_tokens += delta.output.max(0);
+        usage.cache_read_tokens += delta.cached.max(0);
+        if model.is_none() {
+            model = extract_model_from_token_count(&value);
+        }
+    }
+
+    if workspace_path.is_some() && !matches_workspace {
+        return Ok(None);
+    }
+
+    usage.total_tokens = usage.input_tokens
+        + usage.output_tokens
+        + usage.cache_write_tokens
+        + usage.cache_read_tokens;
+
+    if summary.is_none() && usage.total_tokens == 0 {
+        return Ok(None);
+    }
+
+    let session_id = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let model = model.unwrap_or_else(|| "gpt-5.1".to_string());
+    let cost = calculate_usage_cost(&usage, codex_cost_rates());
+    let timestamp = if first_timestamp > 0 {
+        first_timestamp
+    } else {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+    };
+
+    Ok(Some(LocalUsageSessionSummary {
+        session_id,
+        timestamp,
+        model,
+        usage,
+        cost,
+        summary,
+    }))
+}
+
+fn truncate_summary(text: &str) -> Option<String> {
+    let cleaned = text.replace('\n', " ").trim().to_string();
+    if cleaned.is_empty() {
+        return None;
+    }
+    let limit = 45;
+    let truncated = if cleaned.chars().count() > limit {
+        format!("{}...", cleaned.chars().take(limit).collect::<String>())
+    } else {
+        cleaned
+    };
+    Some(truncated)
+}
+
+fn scan_claude_session_summaries(
+    workspace_path: Option<&Path>,
+) -> Result<Vec<LocalUsageSessionSummary>, String> {
+    let projects_dir = match claude_projects_dir() {
+        Some(dir) if dir.exists() => dir,
+        _ => return Ok(Vec::new()),
+    };
+    let mut sessions = Vec::new();
+
+    if let Some(workspace_path) = workspace_path {
+        let encoded = encode_claude_project_path(&workspace_path.to_string_lossy());
+        let project_dir = projects_dir.join(encoded);
+        if project_dir.exists() {
+            scan_claude_project_summaries(&project_dir, &mut sessions)?;
+        }
+        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        return Ok(sessions);
+    }
+
+    let entries = match fs::read_dir(&projects_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(Vec::new()),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_claude_project_summaries(&path, &mut sessions)?;
+        }
+    }
+    sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    Ok(sessions)
+}
+
+fn scan_claude_project_summaries(
+    project_dir: &Path,
+    sessions: &mut Vec<LocalUsageSessionSummary>,
+) -> Result<(), String> {
+    let entries = match fs::read_dir(project_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(()),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".jsonl") || name.starts_with("agent-") {
+            continue;
+        }
+        if let Some(summary) = parse_claude_session_summary(&path)? {
+            sessions.push(summary);
+        }
+    }
+    Ok(())
+}
+
+fn parse_claude_session_summary(path: &Path) -> Result<Option<LocalUsageSessionSummary>, String> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+    let reader = BufReader::new(file);
+    let mut usage = LocalUsageUsageData::default();
+    let mut total_cost = 0.0;
+    let mut model = "unknown".to_string();
+    let mut first_timestamp = 0_i64;
+    let mut summary: Option<String> = None;
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(_) => continue,
+        };
+        if line.len() > 512_000 {
+            continue;
+        }
+
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if first_timestamp == 0 {
+            first_timestamp = read_claude_timestamp(&value).unwrap_or(0);
+        }
+
+        let entry_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if summary.is_none() && entry_type == "summary" {
+            if let Some(text) = value.get("summary").and_then(|v| v.as_str()) {
+                summary = truncate_summary(text);
+            }
+        }
+        if entry_type != "assistant" {
+            continue;
+        }
+
+        let Some(message) = value.get("message").and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let message_model = message.get("model").and_then(|v| v.as_str());
+        if model == "unknown" {
+            if let Some(message_model) = message_model {
+                model = message_model.to_string();
+            }
+        }
+
+        let Some(usage_map) = message.get("usage").and_then(|v| v.as_object()) else {
+            continue;
+        };
+        let input_tokens = read_i64(usage_map, &["input_tokens"]);
+        let output_tokens = read_i64(usage_map, &["output_tokens"]);
+        let cache_write_tokens = read_i64(usage_map, &["cache_creation_input_tokens"]);
+        let cache_read_tokens = read_i64(usage_map, &["cache_read_input_tokens"]);
+        if input_tokens == 0
+            && output_tokens == 0
+            && cache_write_tokens == 0
+            && cache_read_tokens == 0
+        {
+            continue;
+        }
+
+        let message_usage = LocalUsageUsageData {
+            input_tokens,
+            output_tokens,
+            cache_write_tokens,
+            cache_read_tokens,
+            total_tokens: input_tokens + output_tokens + cache_write_tokens + cache_read_tokens,
+        };
+        add_usage(&mut usage, &message_usage);
+
+        let pricing_model = message_model.unwrap_or(model.as_str());
+        total_cost += calculate_usage_cost(&message_usage, claude_cost_rates(pricing_model));
+    }
+
+    usage.total_tokens = usage.input_tokens
+        + usage.output_tokens
+        + usage.cache_write_tokens
+        + usage.cache_read_tokens;
+    if usage.total_tokens == 0 {
+        return Ok(None);
+    }
+
+    let session_id = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default()
+        .to_string();
+    let timestamp = if first_timestamp > 0 {
+        first_timestamp
+    } else {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+    };
+
+    Ok(Some(LocalUsageSessionSummary {
+        session_id,
+        timestamp,
+        model,
+        usage,
+        cost: total_cost,
+        summary,
+    }))
 }
 
 fn scan_file(

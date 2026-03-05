@@ -87,6 +87,7 @@ type ComposerProps = {
   selectedAgent?: ChatInputSelectedAgent | null;
   onAgentSelect?: (agent: ChatInputSelectedAgent | null) => void;
   onOpenAgentSettings?: () => void;
+  onOpenModelSettings?: (providerId?: string) => void;
   opencodeVariantOptions?: string[];
   selectedOpenCodeVariant?: string | null;
   onSelectOpenCodeVariant?: (variant: string | null) => void;
@@ -368,6 +369,7 @@ export const Composer = memo(function Composer({
   selectedAgent = null,
   onAgentSelect,
   onOpenAgentSettings,
+  onOpenModelSettings,
   opencodeVariantOptions: _opencodeVariantOptions = [],
   selectedOpenCodeVariant: _selectedOpenCodeVariant = null,
   onSelectOpenCodeVariant: _onSelectOpenCodeVariant,
@@ -1094,6 +1096,7 @@ export const Composer = memo(function Composer({
           onRemoveContextChip={handleRemoveContextChip}
           onAgentSelect={handleAgentSelect}
           onOpenAgentSettings={onOpenAgentSettings}
+          onOpenModelSettings={onOpenModelSettings}
           permissionMode={accessModeToPermissionMode(accessMode)}
           onModeSelect={handleModeSelect}
           selectedCollaborationModeId={_selectedCollaborationModeId}

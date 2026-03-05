@@ -9,6 +9,7 @@ import type {
   DictationModelStatus,
   DictationSessionState,
   LocalUsageSnapshot,
+  LocalUsageStatistics,
   WorkspaceInfo,
   WorkspaceSettings,
   EngineStatus,
@@ -679,6 +680,20 @@ export async function localUsageSnapshot(
     payload.workspacePath = workspacePath;
   }
   return invoke("local_usage_snapshot", payload);
+}
+
+export async function localUsageStatistics(input: {
+  scope: "current" | "all";
+  provider?: string | null;
+  dateRange: "7d" | "30d" | "all";
+  workspacePath?: string | null;
+}): Promise<LocalUsageStatistics> {
+  return invoke<LocalUsageStatistics>("local_usage_statistics", {
+    scope: input.scope,
+    provider: input.provider ?? "claude",
+    dateRange: input.dateRange,
+    workspacePath: input.workspacePath ?? null,
+  });
 }
 
 export async function getModelList(workspaceId: string) {
@@ -1466,6 +1481,72 @@ export async function closeTerminalSession(
   return invoke("terminal_close", { workspaceId, terminalId });
 }
 
+export type RuntimeLogSessionStatus =
+  | "idle"
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed";
+
+export type RuntimeLogSessionSnapshot = {
+  workspaceId: string;
+  terminalId: string;
+  status: RuntimeLogSessionStatus;
+  commandPreview: string | null;
+  profileId?: string | null;
+  detectedStack?: string | null;
+  startedAtMs: number | null;
+  stoppedAtMs: number | null;
+  exitCode: number | null;
+  error: string | null;
+};
+
+export type RuntimeProfileDescriptor = {
+  id: string;
+  defaultCommand: string;
+  detectedStack: string;
+};
+
+export async function runtimeLogDetectProfiles(
+  workspaceId: string,
+): Promise<RuntimeProfileDescriptor[]> {
+  return invoke("runtime_log_detect_profiles", { workspaceId });
+}
+
+export async function runtimeLogStart(
+  workspaceId: string,
+  options?: {
+    profileId?: string | null;
+    commandOverride?: string | null;
+  },
+): Promise<RuntimeLogSessionSnapshot> {
+  return invoke("runtime_log_start", {
+    workspaceId,
+    profileId: options?.profileId ?? null,
+    commandOverride: options?.commandOverride ?? null,
+  });
+}
+
+export async function runtimeLogStop(
+  workspaceId: string,
+): Promise<RuntimeLogSessionSnapshot> {
+  return invoke("runtime_log_stop", { workspaceId });
+}
+
+export async function runtimeLogGetSession(
+  workspaceId: string,
+): Promise<RuntimeLogSessionSnapshot | null> {
+  return invoke("runtime_log_get_session", { workspaceId });
+}
+
+export async function runtimeLogMarkExit(
+  workspaceId: string,
+  exitCode: number,
+): Promise<RuntimeLogSessionSnapshot> {
+  return invoke("runtime_log_mark_exit", { workspaceId, exitCode });
+}
+
 export async function listThreads(
   workspaceId: string,
   cursor?: string | null,
@@ -1946,6 +2027,10 @@ export async function deleteClaudeProvider(id: string): Promise<void> {
 
 export async function switchClaudeProvider(id: string): Promise<void> {
   return invoke("vendor_switch_claude_provider", { id });
+}
+
+export async function getCurrentClaudeConfig(): Promise<any> {
+  return invoke<any>("vendor_get_current_claude_config");
 }
 
 export async function getClaudeAlwaysThinkingEnabled(): Promise<boolean> {

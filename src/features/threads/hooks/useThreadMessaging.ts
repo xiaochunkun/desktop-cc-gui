@@ -561,8 +561,11 @@ export function useThreadMessaging({
           },
         });
       }
+      const modelFromOptions =
+        options?.model !== undefined ? options.model : undefined;
+      const modelFromHook = model;
       const resolvedModel =
-        options?.model !== undefined ? options.model : model;
+        modelFromOptions !== undefined ? modelFromOptions : modelFromHook;
       const resolvedEffort =
         options?.effort !== undefined ? options.effort : effort;
       const resolvedCollaborationMode =
@@ -667,6 +670,32 @@ export function useThreadMessaging({
             model: resolvedModel,
             fallback: "openai/gpt-5.3-codex",
           },
+        });
+      }
+      onDebug?.({
+        id: `${Date.now()}-client-model-resolve`,
+        timestamp: Date.now(),
+        source: "client",
+        label: "model/resolve",
+        payload: {
+          threadId,
+          engine: resolvedEngine,
+          modelFromOptions: modelFromOptions ?? null,
+          modelFromHook: modelFromHook ?? null,
+          resolvedModel: resolvedModel ?? null,
+          sanitizedModel: sanitizedModel ?? null,
+          modelForSend: modelForSend ?? null,
+        },
+      });
+      if (import.meta.env.DEV) {
+        console.info("[model/resolve/send]", {
+          threadId,
+          engine: resolvedEngine,
+          modelFromOptions: modelFromOptions ?? null,
+          modelFromHook: modelFromHook ?? null,
+          resolvedModel: resolvedModel ?? null,
+          sanitizedModel: sanitizedModel ?? null,
+          modelForSend: modelForSend ?? null,
         });
       }
 

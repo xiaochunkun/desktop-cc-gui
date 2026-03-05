@@ -220,7 +220,7 @@ export function ChatInputBoxFooter({
   selectedAgent?: SelectedAgent | null;
   onAgentSelect?: (agent: SelectedAgent) => void;
   onOpenAgentSettings?: () => void;
-  onAddModel?: () => void;
+  onAddModel?: (providerId?: string) => void;
   onClearAgent: () => void;
   fileCompletion: CompletionController;
   memoryCompletion: CompletionController;

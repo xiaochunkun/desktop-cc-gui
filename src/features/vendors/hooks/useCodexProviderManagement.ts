@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
 import type { CodexProviderConfig } from "../types";
-import { STORAGE_KEYS } from "../types";
 import {
   getCodexProviders,
   addCodexProvider,
@@ -17,18 +16,6 @@ export interface CodexProviderDialogState {
 export interface DeleteCodexConfirmState {
   isOpen: boolean;
   provider: CodexProviderConfig | null;
-}
-
-function safeSetLocalStorage(key: string, value: string): boolean {
-  try {
-    localStorage.setItem(key, value);
-    window.dispatchEvent(
-      new CustomEvent("localStorageChange", { detail: { key } }),
-    );
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export function useCodexProviderManagement() {
@@ -54,13 +41,6 @@ export function useCodexProviderManagement() {
     try {
       const list = await getCodexProviders();
       setCodexProviders(list);
-      const active = list.find((p: CodexProviderConfig) => p.isActive);
-      if (active) {
-        safeSetLocalStorage(
-          STORAGE_KEYS.CODEX_CUSTOM_MODELS,
-          JSON.stringify(active.customModels || []),
-        );
-      }
     } catch {
       // ignore
     } finally {
@@ -98,21 +78,13 @@ export function useCodexProviderManagement() {
           await updateCodexProvider(providerData.id, providerData);
         }
 
-        const activeProvider = codexProviders.find((p) => p.isActive);
-        if (activeProvider && activeProvider.id === providerData.id) {
-          safeSetLocalStorage(
-            STORAGE_KEYS.CODEX_CUSTOM_MODELS,
-            JSON.stringify(providerData.customModels || []),
-          );
-        }
-
         setCodexProviderDialog({ isOpen: false, provider: null });
         await loadCodexProviders();
       } catch {
         // ignore
       }
     },
-    [codexProviderDialog.provider, codexProviders, loadCodexProviders],
+    [codexProviderDialog.provider, loadCodexProviders],
   );
 
   const handleSwitchCodexProvider = useCallback(
