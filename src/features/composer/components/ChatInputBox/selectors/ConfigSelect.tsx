@@ -103,6 +103,8 @@ export const ConfigSelect = ({
   }));
   const currentProviderInfo = providers.find((p) => p.id === providerId) || providers[0];
   const isCodexProvider = providerId === 'codex';
+  const isClaudeProvider = providerId === 'claude';
+  const supportsReviewQuickAction = isCodexProvider || isClaudeProvider;
   const isPlanModeEnabled = (selectedCollaborationModeId ?? 'code') === 'plan';
 
   const handlePlanModeToggle = useCallback(
@@ -723,7 +725,7 @@ export const ConfigSelect = ({
             </>
           )}
 
-          {isCodexProvider && (
+          {supportsReviewQuickAction && (
             <>
               <div style={{ height: 1, background: 'var(--dropdown-border)', margin: '4px 0', opacity: 0.5 }} />
               <div

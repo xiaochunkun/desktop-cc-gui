@@ -13,7 +13,7 @@ vi.mock('../../../../../assets/model-icons/openai.svg', () => ({
 }));
 
 describe('ConfigSelect usage entry', () => {
-  it('shows speed and review quick entries only when provider is codex', async () => {
+  it('shows speed only for codex, while review quick entry is visible for codex and claude', async () => {
     const { container, rerender } = render(
       <ConfigSelect
         currentProvider="codex"
@@ -30,6 +30,18 @@ describe('ConfigSelect usage entry', () => {
     rerender(
       <ConfigSelect
         currentProvider="claude"
+        onProviderChange={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.selector-option-speed')).toBeFalsy();
+      expect(container.querySelector('.selector-option-review-quick')).toBeTruthy();
+    });
+
+    rerender(
+      <ConfigSelect
+        currentProvider="gemini"
         onProviderChange={() => {}}
       />,
     );
@@ -83,6 +95,23 @@ describe('ConfigSelect usage entry', () => {
     const { container } = render(
       <ConfigSelect
         currentProvider="codex"
+        onProviderChange={() => {}}
+        onCodexReviewQuickStart={onCodexReviewQuickStart}
+      />,
+    );
+
+    fireEvent.click(container.querySelector('.config-button') as HTMLElement);
+    const reviewEntry = container.querySelector('.selector-option-review-quick');
+    expect(reviewEntry).toBeTruthy();
+    fireEvent.click(reviewEntry as HTMLElement);
+    expect(onCodexReviewQuickStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers review quick callback for claude provider', async () => {
+    const onCodexReviewQuickStart = vi.fn();
+    const { container } = render(
+      <ConfigSelect
+        currentProvider="claude"
         onProviderChange={() => {}}
         onCodexReviewQuickStart={onCodexReviewQuickStart}
       />,

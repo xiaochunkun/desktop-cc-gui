@@ -356,6 +356,41 @@ describe("useThreadMessaging", () => {
     });
   });
 
+  it("runs /review in claude thread via command passthrough instead of codex RPC", async () => {
+    const { result } = makeHook("claude", {
+      activeThreadId: "claude:session-1",
+      ensuredThreadId: "claude:session-1",
+      threadEngineById: {
+        "claude:session-1": "claude",
+      },
+    });
+
+    await act(async () => {
+      await result.current.startReview("/review");
+    });
+
+    await waitFor(() => {
+      expect(result.current.reviewPrompt?.step).toBe("preset");
+    });
+
+    await act(async () => {
+      result.current.choosePreset("uncommitted");
+    });
+
+    await waitFor(() => {
+      expect(engineSendMessage).toHaveBeenCalledWith(
+        "ws-1",
+        expect.objectContaining({
+          engine: "claude",
+          threadId: "claude:session-1",
+          text: "/review",
+        }),
+      );
+      expect(startReviewService).not.toHaveBeenCalled();
+      expect(result.current.reviewPrompt).toBeNull();
+    });
+  });
+
   it("rebinds /review to a codex thread when the active thread is claude", async () => {
     const startThreadForWorkspace = vi.fn(async () => "thread-review-1");
     const { result } = makeHook("codex", {
@@ -387,6 +422,57 @@ describe("useThreadMessaging", () => {
       expect(startReviewService).toHaveBeenCalledWith(
         "ws-1",
         "thread-review-1",
+        { type: "uncommittedChanges" },
+        "inline",
+      );
+      expect(result.current.reviewPrompt).toBeNull();
+    });
+  });
+
+  it("retries /review on a new codex thread when backend rejects legacy thread id", async () => {
+    vi.mocked(startReviewService)
+      .mockResolvedValueOnce({
+        error: {
+          message:
+            "invalid thread id: invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `l` at 2",
+        },
+      } as never)
+      .mockResolvedValueOnce({ result: { ok: true } } as never);
+    const startThreadForWorkspace = vi.fn(async () => "thread-review-rebound");
+    const { result } = makeHook("codex", {
+      activeThreadId: "legacy-thread-id",
+      ensuredThreadId: "legacy-thread-id",
+      startThreadForWorkspace,
+    });
+
+    await act(async () => {
+      await result.current.startReview("/review");
+    });
+
+    await waitFor(() => {
+      expect(result.current.reviewPrompt?.step).toBe("preset");
+    });
+
+    await act(async () => {
+      result.current.choosePreset("uncommitted");
+    });
+
+    await waitFor(() => {
+      expect(startThreadForWorkspace).toHaveBeenCalledWith("ws-1", {
+        activate: true,
+        engine: "codex",
+      });
+      expect(startReviewService).toHaveBeenNthCalledWith(
+        1,
+        "ws-1",
+        "legacy-thread-id",
+        { type: "uncommittedChanges" },
+        "inline",
+      );
+      expect(startReviewService).toHaveBeenNthCalledWith(
+        2,
+        "ws-1",
+        "thread-review-rebound",
         { type: "uncommittedChanges" },
         "inline",
       );

@@ -525,6 +525,8 @@ export const Composer = memo(function Composer({
 }: ComposerProps) {
   const { t } = useTranslation();
   const isCodexEngine = selectedEngine === "codex";
+  const isReviewQuickActionEngine =
+    selectedEngine === "codex" || selectedEngine === "claude";
   const showStatusPanel = selectedEngine === "claude" || selectedEngine === "codex";
   const { todoTotal, subagentTotal, fileChanges, commandTotal } = useStatusPanelData(
     items,
@@ -897,11 +899,23 @@ export const Composer = memo(function Composer({
   }, [activeThreadId, activeWorkspaceId, selectedEngine, t]);
 
   const handleCodexQuickCommand = useCallback((command: string) => {
-    if (selectedEngine !== "codex" || disabled) {
+    if (disabled) {
+      return;
+    }
+    const normalized = command.trim().toLowerCase();
+    const isReviewCommand = /^\/review\b/.test(normalized);
+    const isFastCommand = /^\/fast\b/.test(normalized);
+    if (isFastCommand && selectedEngine !== "codex") {
+      return;
+    }
+    if (isReviewCommand && !isReviewQuickActionEngine) {
+      return;
+    }
+    if (!isReviewCommand && !isFastCommand && selectedEngine !== "codex") {
       return;
     }
     void onSend(command, []);
-  }, [disabled, onSend, selectedEngine]);
+  }, [disabled, isReviewQuickActionEngine, onSend, selectedEngine]);
 
   const handleSend = useCallback((submittedImages?: string[]) => {
     if (disabled) {
@@ -1084,7 +1098,7 @@ export const Composer = memo(function Composer({
   );
   const codexContextDualViewEnabled = contextDualViewEnabled && isCodexEngine;
   const shouldRenderReviewInlinePrompt =
-    isCodexEngine &&
+    isReviewQuickActionEngine &&
     Boolean(reviewPrompt) &&
     Boolean(_onReviewPromptClose) &&
     Boolean(_onReviewPromptShowPreset) &&

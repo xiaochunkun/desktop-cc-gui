@@ -499,7 +499,7 @@ export interface ChatInputBoxProps {
   codexSpeedMode?: CodexSpeedMode;
   /** Change codex speed mode via quick action (codex only) */
   onCodexSpeedModeChange?: (mode: Exclude<CodexSpeedMode, 'unknown'>) => void;
-  /** Trigger codex review quick action (codex only) */
+  /** Trigger review quick action (codex/claude only) */
   onCodexReviewQuickStart?: () => void;
   /** Whether always thinking is enabled */
   alwaysThinkingEnabled?: boolean;
@@ -651,7 +651,7 @@ export interface ButtonAreaProps {
   codexSpeedMode?: CodexSpeedMode;
   /** Change codex speed mode via quick action (codex only) */
   onCodexSpeedModeChange?: (mode: Exclude<CodexSpeedMode, 'unknown'>) => void;
-  /** Trigger codex review quick action (codex only) */
+  /** Trigger review quick action (codex/claude only) */
   onCodexReviewQuickStart?: () => void;
 
   // Event callbacks
