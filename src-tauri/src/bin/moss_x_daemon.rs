@@ -604,7 +604,7 @@ impl DaemonState {
     }
 
     async fn start_thread(&self, workspace_id: String) -> Result<Value, String> {
-        codex_core::start_thread_core(&self.sessions, workspace_id).await
+        codex_core::start_thread_core(&self.sessions, workspace_id, None).await
     }
 
     async fn resume_thread(

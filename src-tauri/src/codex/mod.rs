@@ -31,6 +31,70 @@ use crate::shared::{codex_core, thread_titles_core};
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
+fn normalize_model_id(candidate: Option<String>) -> Option<String> {
+    candidate
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn pick_model_from_model_list_response(response: &Value) -> Option<String> {
+    let entries = response
+        .get("result")
+        .and_then(|result| result.get("data"))
+        .or_else(|| response.get("data"))
+        .and_then(Value::as_array)?;
+
+    let pick_from_entry = |entry: &Value| {
+        let model = entry
+            .get("model")
+            .and_then(Value::as_str)
+            .or_else(|| entry.get("id").and_then(Value::as_str));
+        model
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    };
+
+    entries
+        .iter()
+        .find(|entry| {
+            entry
+                .get("isDefault")
+                .or_else(|| entry.get("is_default"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        })
+        .and_then(pick_from_entry)
+        .or_else(|| entries.iter().find_map(pick_from_entry))
+}
+
+async fn resolve_workspace_config_model(state: &AppState, workspace_id: &str) -> Option<String> {
+    let (entry, parent_entry) = {
+        let workspaces = state.workspaces.lock().await;
+        let entry = workspaces.get(workspace_id).cloned()?;
+        let parent_entry = entry
+            .parent_id
+            .as_ref()
+            .and_then(|pid| workspaces.get(pid).cloned());
+        (entry, parent_entry)
+    };
+    let codex_home = resolve_workspace_codex_home(&entry, parent_entry.as_ref());
+    normalize_model_id(config::read_config_model(codex_home).ok().flatten())
+}
+
+async fn resolve_workspace_fallback_model(state: &AppState, workspace_id: &str) -> Option<String> {
+    let from_config = resolve_workspace_config_model(state, workspace_id).await;
+    if from_config.is_some() {
+        return from_config;
+    }
+    let model_list = codex_core::model_list_core(&state.sessions, workspace_id.to_string())
+        .await
+        .ok();
+    model_list
+        .as_ref()
+        .and_then(pick_model_from_model_list_response)
+}
+
 pub(crate) async fn spawn_workspace_session(
     entry: WorkspaceEntry,
     default_codex_bin: Option<String>,
@@ -196,8 +260,9 @@ pub(crate) async fn start_thread(
 
     // Ensure Codex session exists before starting thread
     ensure_codex_session(&workspace_id, &state, &app).await?;
+    let resolved_model = resolve_workspace_fallback_model(&state, &workspace_id).await;
 
-    codex_core::start_thread_core(&state.sessions, workspace_id).await
+    codex_core::start_thread_core(&state.sessions, workspace_id, resolved_model).await
 }
 
 #[tauri::command]
@@ -624,6 +689,7 @@ pub(crate) async fn send_user_message(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Value, String> {
+    let normalized_model = normalize_model_id(model);
     let selected_mode = collaboration_mode
         .as_ref()
         .and_then(|value| {
@@ -657,7 +723,7 @@ pub(crate) async fn send_user_message(
         payload.insert("workspaceId".to_string(), json!(workspace_id));
         payload.insert("threadId".to_string(), json!(thread_id));
         payload.insert("text".to_string(), json!(text));
-        payload.insert("model".to_string(), json!(model));
+        payload.insert("model".to_string(), json!(normalized_model));
         payload.insert("effort".to_string(), json!(effort));
         payload.insert("accessMode".to_string(), json!(access_mode));
         payload.insert("images".to_string(), json!(images));
@@ -684,6 +750,11 @@ pub(crate) async fn send_user_message(
     // Ensure Codex session exists before sending message
     // This handles the case where user switches from Claude to Codex engine
     ensure_codex_session(&workspace_id, &state, &app).await?;
+    let effective_model = if normalized_model.is_some() {
+        normalized_model
+    } else {
+        resolve_workspace_fallback_model(&state, &workspace_id).await
+    };
     let mode_enforcement_enabled = {
         let settings = state.app_settings.lock().await;
         settings.codex_mode_enforcement_enabled
@@ -694,7 +765,7 @@ pub(crate) async fn send_user_message(
         workspace_id.clone(),
         thread_id.clone(),
         text,
-        model,
+        effective_model,
         effort,
         access_mode,
         images,
@@ -1952,4 +2023,47 @@ fn sanitize_run_worktree_name(value: &str) -> String {
         }
     }
     format!("feat/{}", cleaned.trim_start_matches('/'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_model_id, pick_model_from_model_list_response};
+    use serde_json::json;
+
+    #[test]
+    fn normalize_model_id_trims_and_filters_empty() {
+        assert_eq!(normalize_model_id(Some(" gpt-5 ".to_string())), Some("gpt-5".to_string()));
+        assert_eq!(normalize_model_id(Some("   ".to_string())), None);
+        assert_eq!(normalize_model_id(None), None);
+    }
+
+    #[test]
+    fn pick_model_prefers_default_entry() {
+        let response = json!({
+            "result": {
+                "data": [
+                    { "id": "openai/gpt-4.1", "isDefault": false },
+                    { "model": "openai/gpt-5.3-codex", "isDefault": true }
+                ]
+            }
+        });
+        assert_eq!(
+            pick_model_from_model_list_response(&response),
+            Some("openai/gpt-5.3-codex".to_string())
+        );
+    }
+
+    #[test]
+    fn pick_model_falls_back_to_first_entry() {
+        let response = json!({
+            "data": [
+                { "id": "openai/gpt-5-mini" },
+                { "model": "openai/gpt-5.3-codex" }
+            ]
+        });
+        assert_eq!(
+            pick_model_from_model_list_response(&response),
+            Some("openai/gpt-5-mini".to_string())
+        );
+    }
 }
