@@ -571,6 +571,26 @@ export function useAppServerEvents(
         return;
       }
 
+      if (method === "codex/parseError") {
+        const params = (message.params as Record<string, unknown>) ?? {};
+        const fallbackThreadId = handlers.getActiveCodexThreadId?.(workspace_id) ?? "";
+        const threadId = extractThreadIdFromParams(params) || fallbackThreadId;
+        if (!threadId) {
+          return;
+        }
+        const parseErrorText = String(params.error ?? "").trim();
+        const rawText = String(params.raw ?? "").trim();
+        const detail = rawText ? `\n${rawText}` : "";
+        const messageText = parseErrorText
+          ? `Codex stream parse error: ${parseErrorText}${detail}`
+          : `Codex stream parse error${detail}`;
+        handlers.onTurnError?.(workspace_id, threadId, "", {
+          message: messageText,
+          willRetry: false,
+        });
+        return;
+      }
+
       if (method === "turn/error") {
         const params = message.params as Record<string, unknown>;
         const threadId = String(params.threadId ?? params.thread_id ?? "");

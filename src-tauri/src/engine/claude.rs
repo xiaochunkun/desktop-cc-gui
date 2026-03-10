@@ -342,6 +342,8 @@ impl ClaudeSession {
         let mut saw_text_delta = false;
         let mut new_session_id: Option<String> = None;
         let mut error_output = String::new();
+        let mut stream_runtime_error: Option<String> = None;
+        let mut stream_error_event_emitted = false;
 
         // Spawn stderr reader
         let stderr_reader = BufReader::new(stderr);
@@ -411,6 +413,13 @@ impl ClaudeSession {
 
                     // Convert and emit event
                     if let Some(unified_event) = self.convert_event(turn_id, &event) {
+                        if let EngineEvent::TurnError { ref error, .. } = unified_event {
+                            if stream_runtime_error.is_none() {
+                                stream_runtime_error = Some(error.clone());
+                            }
+                            stream_error_event_emitted = true;
+                        }
+
                         // Collect text for final response
                         if let EngineEvent::TextDelta { ref text, .. } = unified_event {
                             response_text.push_str(text);
@@ -440,6 +449,12 @@ impl ClaudeSession {
                     // Non-JSON output, might be error
                     error_output.push_str(&line);
                     error_output.push('\n');
+                    if stream_runtime_error.is_none() {
+                        let trimmed = line.trim();
+                        if looks_like_claude_runtime_error(trimmed) {
+                            stream_runtime_error = Some(trimmed.to_string());
+                        }
+                    }
                 }
             }
         }
@@ -522,6 +537,29 @@ impl ClaudeSession {
                 );
                 return Err(error_msg);
             }
+        }
+
+        // Claude may emit an in-stream error while still exiting with code 0.
+        // In that case we must not mark the turn as completed successfully.
+        if let Some(stream_error) = stream_runtime_error {
+            let error_msg = if !error_output.trim().is_empty() {
+                let stderr_text = error_output.trim();
+                format!("{}\n{}", stream_error, stderr_text)
+            } else {
+                stream_error
+            };
+            log::error!("Claude stream reported runtime error: {}", error_msg);
+            if !stream_error_event_emitted {
+                self.emit_turn_event(
+                    turn_id,
+                    EngineEvent::TurnError {
+                        workspace_id: self.workspace_id.clone(),
+                        error: error_msg.clone(),
+                        code: None,
+                    },
+                );
+            }
+            return Err(error_msg);
         }
 
         // Emit turn completed
@@ -1610,6 +1648,17 @@ fn extract_result_text(event: &Value) -> Option<String> {
     content.and_then(extract_text_from_content)
 }
 
+fn looks_like_claude_runtime_error(line: &str) -> bool {
+    let text = line.trim();
+    if text.is_empty() {
+        return false;
+    }
+    let lower = text.to_ascii_lowercase();
+    lower.starts_with("api error:")
+        || lower.contains("unexpected end of json input")
+        || lower.starts_with("error:")
+}
+
 /// Format the user's AskUserQuestion answers into a human-readable message
 /// that can be sent as a follow-up via `--resume`.
 fn format_ask_user_answer(result: &Value) -> String {
@@ -2059,5 +2108,21 @@ mod tests {
             Some(EngineEvent::TextDelta { text, .. }) => assert_eq!(text, "？"),
             other => panic!("expected punctuation-only delta, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn looks_like_claude_runtime_error_detects_api_json_eof() {
+        assert!(looks_like_claude_runtime_error(
+            "API Error: Unexpected end of JSON input"
+        ));
+        assert!(looks_like_claude_runtime_error(
+            "error: transport dropped unexpectedly"
+        ));
+    }
+
+    #[test]
+    fn looks_like_claude_runtime_error_ignores_regular_output() {
+        assert!(!looks_like_claude_runtime_error("你好，我继续给你方案"));
+        assert!(!looks_like_claude_runtime_error("{\"type\":\"assistant\"}"));
     }
 }

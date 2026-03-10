@@ -228,6 +228,25 @@ describe("useAppServerEvents", () => {
       listener?.({
         workspace_id: "ws-1",
         message: {
+          method: "codex/parseError",
+          params: {
+            threadId: "thread-2",
+            error: "EOF while parsing value",
+            raw: "{\"id\":1,\"method\":\"turn/completed\"",
+          },
+        },
+      });
+    });
+    expect(handlers.onTurnError).toHaveBeenCalledWith("ws-1", "thread-2", "", {
+      message:
+        "Codex stream parse error: EOF while parsing value\n{\"id\":1,\"method\":\"turn/completed\"",
+      willRetry: false,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-1",
+        message: {
           method: "codex/backgroundThread",
           params: { threadId: "thread-2", action: "hide" },
         },
