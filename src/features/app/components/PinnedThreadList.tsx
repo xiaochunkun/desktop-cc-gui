@@ -91,10 +91,7 @@ export function PinnedThreadList({
         const canPin = depth === 0;
         const isPinned = canPin && isThreadPinned(workspaceId, thread.id);
         const isAutoNaming = isThreadAutoNaming(workspaceId, thread.id);
-        const showProxyBadge =
-          systemProxyEnabled &&
-          workspaceId === activeWorkspaceId &&
-          isProcessing;
+        const showProxyBadge = systemProxyEnabled && isProcessing;
         const engineSource = thread.engineSource ?? "codex";
         const engineTitle =
           engineSource === "claude"

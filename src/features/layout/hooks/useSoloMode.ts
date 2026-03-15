@@ -27,6 +27,7 @@ type UseSoloModeOptions = {
   expandSidebar: () => void;
   collapseRightPanel: () => void;
   expandRightPanel: () => void;
+  onEnterSoloMode?: () => void;
 };
 
 export function useSoloMode({
@@ -43,6 +44,7 @@ export function useSoloMode({
   expandSidebar,
   collapseRightPanel,
   expandRightPanel,
+  onEnterSoloMode,
 }: UseSoloModeOptions) {
   const [isSoloMode, setIsSoloMode] = useState(false);
   const snapshotRef = useRef<SoloLayoutSnapshot | null>(null);
@@ -97,6 +99,7 @@ export function useSoloMode({
     setFilePanelMode("activity");
     collapseSidebar();
     expandRightPanel();
+    onEnterSoloMode?.();
   }, [
     activeTab,
     centerMode,
@@ -104,6 +107,7 @@ export function useSoloMode({
     enabled,
     expandRightPanel,
     filePanelMode,
+    onEnterSoloMode,
     rightPanelCollapsed,
     setActiveTab,
     setCenterMode,

@@ -131,16 +131,19 @@ describe("PinnedThreadList", () => {
     expect(screen.getByText("Auto naming...")).toBeTruthy();
   });
 
-  it("shows a compact proxy badge on the active pinned row when proxy is enabled", () => {
+  it("shows a compact proxy badge on a processing pinned row even when workspace is inactive", () => {
     const { container } = render(
       <PinnedThreadList
         {...baseProps}
+        rows={[{ thread: otherThread, depth: 0, workspaceId: "ws-2" }]}
+        activeWorkspaceId="ws-1"
+        activeThreadId={null}
         systemProxyEnabled
         systemProxyUrl="http://127.0.0.1:7890"
       />,
     );
 
-    const row = container.querySelector(".thread-row.active");
+    const row = container.querySelector(".thread-row");
     const badge = row?.querySelector(".thread-proxy-badge");
     expect(badge).toBeTruthy();
     expect(badge?.textContent ?? "").toBe("");

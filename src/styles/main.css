@@ -33,7 +33,7 @@
 }
 
 .app.layout-desktop.solo-mode .main {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 38vw);
+  grid-template-columns: minmax(0, 1fr) minmax(270px, var(--right-panel-width, 320px));
 }
 
 body[data-panel-resizing="true"] .main {
@@ -1338,6 +1338,10 @@ body.editor-horizontal-split-resizing * {
   cursor: col-resize;
   z-index: 2;
   transition: opacity 160ms ease;
+}
+
+.app.layout-desktop.solo-mode .right-panel-resizer {
+  right: calc(var(--right-panel-width, 320px) - 4px);
 }
 
 .right-panel-resizer::after {

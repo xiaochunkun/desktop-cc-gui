@@ -51,7 +51,7 @@ function getRightPanelMaxWidth() {
 function readStoredNum(key: string, fallback: number, min: number, max: number) {
   const stored = getClientStoreSync<number>("layout", key);
   if (stored === undefined || !Number.isFinite(stored)) {
-    return fallback;
+    return clamp(fallback, min, max);
   }
   return clamp(stored, min, max);
 }
@@ -124,7 +124,7 @@ export function useResizablePanels() {
   const [sidebarWidth, setSidebarWidth] = useState(() =>
     readStoredNum("sidebarWidth", DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH),
   );
-  const [rightPanelWidth, setRightPanelWidth] = useState(() =>
+  const [rightPanelWidth, setRightPanelWidthState] = useState(() =>
     readStoredNum("rightPanelWidth", DEFAULT_RIGHT_PANEL_WIDTH, MIN_RIGHT_PANEL_WIDTH, getRightPanelMaxWidth()),
   );
   const [planPanelHeight, setPlanPanelHeight] = useState(() =>
@@ -172,7 +172,7 @@ export function useResizablePanels() {
       if (next !== liveSizesRef.current.rightPanelWidth) {
         liveSizesRef.current.rightPanelWidth = next;
         applyLiveSizeCssVar("right-panel", next);
-        setRightPanelWidth(next);
+        setRightPanelWidthState(next);
       }
     }
 
@@ -240,7 +240,7 @@ export function useResizablePanels() {
       if (resizeRef.current.type === "sidebar") {
         setSidebarWidth((current) => (current === next ? current : next));
       } else if (resizeRef.current.type === "right-panel") {
-        setRightPanelWidth((current) => (current === next ? current : next));
+        setRightPanelWidthState((current) => (current === next ? current : next));
       } else if (resizeRef.current.type === "plan-panel") {
         setPlanPanelHeight((current) => (current === next ? current : next));
       } else if (resizeRef.current.type === "terminal-panel") {
@@ -341,7 +341,7 @@ export function useResizablePanels() {
       resizeRef.current = null;
       setPanelResizing(false);
       setSidebarWidth(liveSizesRef.current.sidebarWidth);
-      setRightPanelWidth(liveSizesRef.current.rightPanelWidth);
+      setRightPanelWidthState(liveSizesRef.current.rightPanelWidth);
       setPlanPanelHeight(liveSizesRef.current.planPanelHeight);
       setTerminalPanelHeight(liveSizesRef.current.terminalPanelHeight);
       setDebugPanelHeight(liveSizesRef.current.debugPanelHeight);
@@ -515,6 +515,13 @@ export function useResizablePanels() {
     [kanbanConversationWidth, setResizingMode],
   );
 
+  const setRightPanelWidth = useCallback((nextWidth: number) => {
+    const next = clamp(nextWidth, MIN_RIGHT_PANEL_WIDTH, getRightPanelMaxWidth());
+    liveSizesRef.current.rightPanelWidth = next;
+    applyLiveSizeCssVar("right-panel", next);
+    setRightPanelWidthState((current) => (current === next ? current : next));
+  }, []);
+
   return {
     sidebarWidth,
     rightPanelWidth,
@@ -528,5 +535,6 @@ export function useResizablePanels() {
     onTerminalPanelResizeStart,
     onDebugPanelResizeStart,
     onKanbanConversationResizeStart,
+    setRightPanelWidth,
   };
 }

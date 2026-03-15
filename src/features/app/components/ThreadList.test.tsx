@@ -216,16 +216,22 @@ describe("ThreadList", () => {
     expect(engineBadge?.classList.contains("is-processing")).toBe(true);
   });
 
-  it("shows a compact proxy badge on the active row when proxy is enabled", () => {
+  it("shows a compact proxy badge on a processing row even when workspace is inactive", () => {
     const { container } = render(
       <ThreadList
         {...baseProps}
+        workspaceId="ws-2"
+        activeWorkspaceId="ws-1"
+        activeThreadId={null}
         systemProxyEnabled
         systemProxyUrl="http://127.0.0.1:7890"
+        threadStatusById={{
+          "thread-1": { isProcessing: true, hasUnread: false, isReviewing: false },
+        }}
       />,
     );
 
-    const row = container.querySelector(".thread-row.active");
+    const row = container.querySelector(".thread-row");
     const badge = row?.querySelector(".thread-proxy-badge");
     expect(badge).toBeTruthy();
     expect(badge?.textContent ?? "").toBe("");

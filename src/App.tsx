@@ -495,6 +495,7 @@ function MainApp() {
   const {
     sidebarWidth,
     rightPanelWidth,
+    setRightPanelWidth,
     onSidebarResizeStart,
     onRightPanelResizeStart,
     planPanelHeight,
@@ -535,6 +536,15 @@ function MainApp() {
   });
   const appRootRef = useRef<HTMLDivElement | null>(null);
   const gitHistoryPanelHeightRef = useRef(gitHistoryPanelHeight);
+
+  const resetSoloSplitToHalf = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const appRoot = appRootRef.current;
+      const main = appRoot?.querySelector<HTMLElement>(".main");
+      const mainWidth = main?.clientWidth ?? window.innerWidth;
+      setRightPanelWidth(Math.floor(mainWidth / 2));
+    });
+  }, [setRightPanelWidth]);
 
   useEffect(() => {
     gitHistoryPanelHeightRef.current = gitHistoryPanelHeight;
@@ -4080,6 +4090,7 @@ function MainApp() {
     expandSidebar,
     collapseRightPanel,
     expandRightPanel,
+    onEnterSoloMode: resetSoloSplitToHalf,
   });
   const sidebarToggleProps = {
     isCompact,

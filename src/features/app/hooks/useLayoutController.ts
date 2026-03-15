@@ -20,6 +20,7 @@ export function useLayoutController({
   const {
     sidebarWidth,
     rightPanelWidth,
+    setRightPanelWidth,
     onSidebarResizeStart,
     onRightPanelResizeStart,
     planPanelHeight,
@@ -73,6 +74,7 @@ export function useLayoutController({
     isPhone,
     sidebarWidth,
     rightPanelWidth,
+    setRightPanelWidth,
     planPanelHeight,
     terminalPanelHeight,
     debugPanelHeight,
