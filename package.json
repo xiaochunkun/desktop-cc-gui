@@ -19,6 +19,7 @@
     "doctor:win": "npm run check:runtime-contracts && node scripts/doctor.mjs --strict",
     "check:app-shell:runtime-contract": "node scripts/check-app-shell-runtime-contract.mjs",
     "check:git-history:runtime-contract": "node scripts/check-git-history-runtime-contract.mjs",
+    "check:git-history:static-imports": "node scripts/check-refactor-imports.mjs src/features/git-history/components/git-history-panel/components",
     "check:runtime-contracts": "npm run check:app-shell:runtime-contract && npm run check:git-history:runtime-contract",
     "ensure:dev-port": "node scripts/ensure-dev-port.mjs",
     "check:large-files": "node scripts/check-large-files.mjs --threshold 3000",

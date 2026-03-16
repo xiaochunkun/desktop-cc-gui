@@ -101,7 +101,13 @@ import { GitHistoryWorktreePanel } from "../../GitHistoryWorktreePanel";
 import { isWorkingTreeDirtyBlockingError, localizeGitErrorMessage } from "../../../gitErrorI18n";
 import { useGitHistoryPanelInteractions } from "../hooks/useGitHistoryPanelInteractions";
 import { renderGitHistoryPanelView } from "./GitHistoryPanelView";
-import { ActionSurface, GitHistoryInlinePicker, GitHistoryProjectPicker, type GitHistoryInlinePickerOption } from "./GitHistoryPanelPickers";
+import {
+  ActionSurface,
+  GitHistoryInlinePicker,
+  GitHistoryProjectPicker,
+  type GitHistoryInlinePickerOption,
+  type GitHistoryPickerOption,
+} from "./GitHistoryPanelPickers";
 import { isRepositoryUnavailableError, formatRelativeTime, statusLabel, buildFileKey, getTreeLineOpacity, renderChangedFilesSummary, getPathLeafName, collectDirPaths, pickSelectedFileKey, buildFileTreeItems, getBranchScope, getBranchLeafName, trimRemotePrefix, getSpecialBranchBadges } from "../utils/gitHistoryPanelSharedUtils";
 
 
