@@ -16,11 +16,16 @@ function findTask(tasks: KanbanTask[], taskId: string): KanbanTask | undefined {
 function findDownstreamTask(
   tasks: KanbanTask[],
   upstreamTaskId: string,
-  excludeTaskId?: string,
+  options?: {
+    excludeTaskId?: string;
+    statuses?: KanbanTaskStatus[];
+  },
 ): KanbanTask | undefined {
+  const { excludeTaskId, statuses } = options ?? {};
   return tasks.find(
     (task) =>
       task.id !== excludeTaskId &&
+      (!statuses || statuses.includes(task.status)) &&
       task.chain?.previousTaskId === upstreamTaskId,
   );
 }
@@ -81,6 +86,13 @@ function resolveGroupCode(
   return generateGroupCode(existingCodes);
 }
 
+function hasCompletedExecution(task: Pick<KanbanTask, "execution">): boolean {
+  return (
+    typeof task.execution?.finishedAt === "number" &&
+    Number.isFinite(task.execution.finishedAt)
+  );
+}
+
 export function validateChainSelection(input: {
   tasks: KanbanTask[];
   taskId?: string;
@@ -114,7 +126,10 @@ export function validateChainSelection(input: {
     return { ok: false, reason: "chain_requires_todo_upstream" };
   }
 
-  const downstream = findDownstreamTask(tasks, previousTaskId, taskId);
+  const downstream = findDownstreamTask(tasks, previousTaskId, {
+    excludeTaskId: taskId,
+    statuses: ["todo", "inprogress", "testing"],
+  });
   if (downstream) {
     return { ok: false, reason: "chain_multi_downstream" };
   }
@@ -150,7 +165,38 @@ export function findTaskDownstream(
   tasks: KanbanTask[],
   upstreamTaskId: string,
 ): KanbanTask | undefined {
-  return findDownstreamTask(tasks, upstreamTaskId);
+  return findDownstreamTask(tasks, upstreamTaskId, { statuses: ["todo"] });
+}
+
+export function resolveChainedDragBlockedReason(
+  task: Pick<KanbanTask, "chain" | "execution">,
+  sourceStatus: KanbanTaskStatus,
+  destinationStatus: KanbanTaskStatus,
+  options?: {
+    isTaskInChain?: boolean;
+  },
+): string | null {
+  const isTaskInChain =
+    options?.isTaskInChain ?? Boolean(task.chain?.groupId || task.chain?.previousTaskId);
+  if (!isTaskInChain) {
+    return null;
+  }
+  const isHeadInChain = !task.chain?.previousTaskId;
+
+  if (sourceStatus === "done" && destinationStatus !== "done") {
+    return "chain_completed_status_locked";
+  }
+
+  if (destinationStatus === "inprogress" && !isHeadInChain) {
+    return "chain_requires_head_trigger";
+  }
+  if (
+    (destinationStatus === "testing" || destinationStatus === "done") &&
+    !hasCompletedExecution(task)
+  ) {
+    return "chain_requires_execution_completion";
+  }
+  return null;
 }
 
 export function chainPositionOfTask(tasks: KanbanTask[], taskId: string): number {

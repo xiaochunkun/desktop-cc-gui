@@ -1,10 +1,19 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  type CSSProperties,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Draggable } from "@hello-pangea/dnd";
 import {
+  ArrowRightLeft,
   Ban,
   CalendarCheck2,
   CalendarClock,
+  Link2,
   Loader2,
   MoreHorizontal,
   Pause,
@@ -22,6 +31,8 @@ type KanbanCardProps = {
   task: KanbanTask;
   index: number;
   chainGroupCode?: string | null;
+  chainGroupCodePrefix?: "#" | "$";
+  chainGroupBadgeStyle?: CSSProperties;
   chainOrderIndex?: number | null;
   isSelected?: boolean;
   isProcessing?: boolean;
@@ -49,6 +60,20 @@ function formatElapsed(ms: number): string {
   const hours = Math.floor(minutes / 60);
   const remainMinutes = minutes % 60;
   return `${hours}h ${remainMinutes.toString().padStart(2, "0")}m`;
+}
+
+function pad2(value: number): string {
+  return value.toString().padStart(2, "0");
+}
+
+function formatMonthDayTime(timestamp: number | null | undefined): string | null {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return null;
+  }
+  const date = new Date(timestamp);
+  return `${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(
+    date.getMinutes(),
+  )}:${pad2(date.getSeconds())}`;
 }
 
 function formatCountdown(ms: number): string {
@@ -87,6 +112,8 @@ export function KanbanCard({
   task,
   index,
   chainGroupCode = null,
+  chainGroupCodePrefix = "#",
+  chainGroupBadgeStyle,
   chainOrderIndex = null,
   isSelected,
   isProcessing,
@@ -99,6 +126,7 @@ export function KanbanCard({
 }: KanbanCardProps) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<"down" | "up">("down");
   const [showDragHint, setShowDragHint] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const dragHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,14 +144,32 @@ export function KanbanCard({
   const showExecutionTimeRange = task.status === "testing" || task.status === "done";
   const executionStartedAt = task.execution?.startedAt ?? processingStartedAt ?? null;
   const executionFinishedAt = task.execution?.finishedAt ?? null;
+  const hasExecutionTimeData =
+    typeof executionStartedAt === "number" || typeof executionFinishedAt === "number";
   const recurringBadgeLabelKey =
     recurringSchedule ? resolveRecurringBadgeLabelKey(task.status) : null;
+  const isRecurringTask = Boolean(recurringSchedule);
   const showChainMeta = Boolean(
     task.chain?.groupId ||
       isChainedTask ||
-      chainGroupCode ||
       (typeof chainOrderIndex === "number" && Number.isFinite(chainOrderIndex)),
   );
+  const executionTimeRangeLabel = t("kanban.task.detail.timeRange", {
+    start: formatMonthDayTime(executionStartedAt) ?? "-",
+    end: formatMonthDayTime(executionFinishedAt) ?? "-",
+  });
+  const chainGroupCodeLabel = chainGroupCode
+    ? chainGroupCodePrefix === "#" &&
+      typeof chainOrderIndex === "number" &&
+      Number.isFinite(chainOrderIndex) &&
+      chainOrderIndex === 1
+      ? `#${chainGroupCode}-(首)`
+      : `${chainGroupCodePrefix}${chainGroupCode}`
+    : null;
+  const chainBadgeLabel =
+    typeof chainOrderIndex === "number" && Number.isFinite(chainOrderIndex)
+      ? t("kanban.task.detail.chainOrder", { order: chainOrderIndex })
+      : t("kanban.task.chain.badge");
   const recurringCountdownTarget =
     task.status === "todo" &&
     recurringSchedule &&
@@ -138,6 +184,19 @@ export function KanbanCard({
     typeof recurringSchedule.pausedRemainingMs === "number"
       ? formatCountdown(recurringSchedule.pausedRemainingMs)
       : null;
+  const recurringRoundsLabel =
+    recurringSchedule?.recurringExecutionMode === "same_thread" &&
+    recurringSchedule.maxRounds
+      ? t("kanban.task.detail.rounds", {
+          current: recurringSchedule.completedRounds ?? 0,
+          max: recurringSchedule.maxRounds,
+        })
+      : null;
+  const hasCountdownBadge = Boolean(frozenPausedCountdownText || countdownText);
+  const hasTimeRangeBadge = showExecutionTimeRange && hasExecutionTimeData;
+  const hasSecondaryMetaSignals =
+    hasCountdownBadge || hasTimeRangeBadge || Boolean(recurringRoundsLabel);
+  const placeGroupCodeInPrimary = Boolean(chainGroupCodeLabel) && !hasSecondaryMetaSignals;
 
   const formatRunAt = useCallback((timestamp: number | null | undefined): string | null => {
     if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
@@ -196,6 +255,44 @@ export function KanbanCard({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
+  useLayoutEffect(() => {
+    if (!menuOpen) {
+      setMenuPlacement("down");
+      return;
+    }
+
+    const evaluateMenuPlacement = () => {
+      const container = menuRef.current;
+      if (!container) {
+        return;
+      }
+      const trigger = container.querySelector(".kanban-card-menu-btn") as HTMLElement | null;
+      const menu = container.querySelector(".kanban-dropdown-menu") as HTMLElement | null;
+      if (!trigger || !menu) {
+        return;
+      }
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuHeight = Math.max(menu.offsetHeight, 160);
+      const viewportPadding = 12;
+      const menuGap = 4;
+      const spaceBelow = window.innerHeight - triggerRect.bottom - viewportPadding;
+      const spaceAbove = triggerRect.top - viewportPadding;
+      const shouldDropUp =
+        spaceBelow < menuHeight + menuGap && spaceAbove > spaceBelow;
+      setMenuPlacement(shouldDropUp ? "up" : "down");
+    };
+
+    const rafId = window.requestAnimationFrame(evaluateMenuPlacement);
+    window.addEventListener("resize", evaluateMenuPlacement);
+    window.addEventListener("scroll", evaluateMenuPlacement, true);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", evaluateMenuPlacement);
+      window.removeEventListener("scroll", evaluateMenuPlacement, true);
+    };
+  }, [menuOpen]);
+
   useEffect(() => {
     return () => {
       if (dragHintTimerRef.current) clearTimeout(dragHintTimerRef.current);
@@ -245,7 +342,7 @@ export function KanbanCard({
                 <MoreHorizontal size={16} />
               </button>
               {menuOpen && (
-                <div className="kanban-dropdown-menu">
+                <div className={`kanban-dropdown-menu${menuPlacement === "up" ? " is-dropup" : ""}`}>
                   {task.status === "todo" && onEdit && (
                     <button
                       className="kanban-dropdown-item"
@@ -305,100 +402,111 @@ export function KanbanCard({
           {task.description && (
             <p className="kanban-card-desc">{task.description}</p>
           )}
-          {(scheduleDescriptor || isChainedTask || showExecutionTimeRange) && (
-            <div className="kanban-card-meta-row">
-              {scheduleDescriptor === "once" && (
-                <span className="kanban-card-badge is-schedule">{t("kanban.task.schedule.onceBadge")}</span>
-              )}
-              {scheduleDescriptor === "recurring" && recurringBadgeLabelKey && (
-                <span className="kanban-card-badge is-schedule">
-                  {task.status === "inprogress" ? (
-                    <Loader2 size={12} className="kanban-card-badge-icon kanban-spin" />
-                  ) : task.status === "todo" ? (
+          {(scheduleDescriptor || showChainMeta || showExecutionTimeRange) && (
+            <div className="kanban-card-meta">
+              <div className="kanban-card-meta-row">
+                {scheduleDescriptor === "once" && (
+                  <span className="kanban-card-badge is-schedule">
                     <CalendarClock size={12} className="kanban-card-badge-icon" />
-                  ) : (
-                    <CalendarCheck2 size={12} className="kanban-card-badge-icon" />
+                    {t("kanban.task.schedule.onceBadge")}
+                  </span>
+                )}
+                {scheduleDescriptor === "recurring" && recurringBadgeLabelKey && (
+                  <span className="kanban-card-badge is-schedule">
+                    {task.status === "inprogress" ? (
+                      <Loader2 size={12} className="kanban-card-badge-icon kanban-spin" />
+                    ) : task.status === "todo" ? (
+                      <CalendarClock size={12} className="kanban-card-badge-icon" />
+                    ) : (
+                      <CalendarCheck2 size={12} className="kanban-card-badge-icon" />
+                    )}
+                    {t(recurringBadgeLabelKey)}
+                  </span>
+                )}
+                {scheduleDescriptor === "once_overdue" && (
+                  <span className="kanban-card-badge is-schedule kanban-card-badge-warn">
+                    {t("kanban.task.schedule.onceOverdueBadge")}
+                  </span>
+                )}
+                {onceSchedule?.runAt && (
+                  <span className="kanban-card-badge is-time">
+                    {t("kanban.task.detail.runAt", { time: formatRunAt(onceSchedule.runAt) ?? "-" })}
+                  </span>
+                )}
+                {recurringSchedule && (
+                  <span className="kanban-card-badge is-interval">
+                    {t("kanban.task.detail.every", {
+                      interval: recurringSchedule.interval ?? 1,
+                      unit: t(`kanban.task.schedule.${recurringSchedule.unit ?? "days"}`),
+                    })}
+                  </span>
+                )}
+                {recurringSchedule?.recurringExecutionMode === "same_thread" && (
+                  <span className="kanban-card-badge is-mode">{t("kanban.task.detail.sameThread")}</span>
+                )}
+                {recurringSchedule?.recurringExecutionMode === "new_thread" && (
+                  <span className="kanban-card-badge is-mode">{t("kanban.task.detail.newThread")}</span>
+                )}
+                {showChainMeta && (
+                  <span className="kanban-card-badge is-chain">
+                    <Link2 size={12} className="kanban-card-badge-icon" />
+                    {chainBadgeLabel}
+                  </span>
+                )}
+                {recurringRunIndex !== null && !showChainMeta && (
+                  <span className="kanban-card-badge is-chain">
+                    <Link2 size={12} className="kanban-card-badge-icon" />
+                    {t("kanban.task.detail.chainOrder", { order: recurringRunIndex })}
+                  </span>
+                )}
+                {recurringSchedule?.recurringExecutionMode === "new_thread" && (
+                  <span className="kanban-card-badge is-result">
+                    {recurringSchedule.newThreadResultMode === "none"
+                      ? (
+                        <>
+                          <ArrowRightLeft size={12} className="kanban-card-badge-icon" />
+                          {t("kanban.task.detail.resultBlocked")}
+                        </>
+                      )
+                      : (
+                        <>
+                          <ArrowRightLeft size={12} className="kanban-card-badge-icon" />
+                          {t("kanban.task.detail.resultPassed")}
+                        </>
+                      )}
+                  </span>
+                )}
+                {placeGroupCodeInPrimary && chainGroupCodeLabel && (showChainMeta || isRecurringTask) && (
+                  <span className="kanban-card-badge is-chain-code" style={chainGroupBadgeStyle}>
+                    {chainGroupCodeLabel}
+                  </span>
+                )}
+              </div>
+              {(hasSecondaryMetaSignals || (!placeGroupCodeInPrimary && chainGroupCodeLabel)) && (
+                <div className="kanban-card-meta-row is-secondary">
+                  {hasCountdownBadge && (
+                    <span className="kanban-card-badge is-countdown">
+                      {t("kanban.task.detail.countdown", {
+                        time: frozenPausedCountdownText ?? countdownText,
+                      })}
+                    </span>
                   )}
-                  {t(recurringBadgeLabelKey)}
-                </span>
-              )}
-              {onceSchedule?.runAt && (
-                <span className="kanban-card-badge is-time">
-                  {t("kanban.task.detail.runAt", { time: formatRunAt(onceSchedule.runAt) ?? "-" })}
-                </span>
-              )}
-              {recurringSchedule && (
-                <span className="kanban-card-badge is-interval">
-                  {t("kanban.task.detail.every", {
-                    interval: recurringSchedule.interval ?? 1,
-                    unit: t(`kanban.task.schedule.${recurringSchedule.unit ?? "days"}`),
-                  })}
-                </span>
-              )}
-              {(frozenPausedCountdownText || countdownText) && (
-                <span className="kanban-card-badge is-countdown">
-                  {t("kanban.task.detail.countdown", {
-                    time: frozenPausedCountdownText ?? countdownText,
-                  })}
-                </span>
-              )}
-              {recurringSchedule?.recurringExecutionMode === "same_thread" && (
-                <span className="kanban-card-badge is-mode">{t("kanban.task.detail.sameThread")}</span>
-              )}
-              {recurringSchedule?.recurringExecutionMode === "new_thread" && (
-                <span className="kanban-card-badge is-mode">{t("kanban.task.detail.newThread")}</span>
-              )}
-              {recurringRunIndex !== null && (
-                <span className="kanban-card-badge is-sequence">
-                  {t("kanban.task.detail.runIndex", { index: recurringRunIndex })}
-                </span>
-              )}
-              {recurringSchedule?.recurringExecutionMode === "same_thread" && recurringSchedule.maxRounds && (
-                <span className="kanban-card-badge is-sequence">
-                  {t("kanban.task.detail.rounds", {
-                    current: recurringSchedule.completedRounds ?? 0,
-                    max: recurringSchedule.maxRounds,
-                  })}
-                </span>
-              )}
-              {recurringSchedule?.recurringExecutionMode === "new_thread" && (
-                <span className="kanban-card-badge is-result">
-                  {recurringSchedule.newThreadResultMode === "none"
-                    ? t("kanban.task.detail.resultBlocked")
-                    : t("kanban.task.detail.resultPassed")}
-                </span>
-              )}
-              {scheduleDescriptor === "once_overdue" && (
-                <span className="kanban-card-badge is-schedule kanban-card-badge-warn">
-                  {t("kanban.task.schedule.onceOverdueBadge")}
-                </span>
-              )}
-              {showChainMeta && (
-                <span className="kanban-card-badge is-chain">{t("kanban.task.chain.badge")}</span>
-              )}
-              {showChainMeta && chainGroupCode && (
-                <span className="kanban-card-badge is-chain-code">
-                  {t("kanban.task.detail.groupCode", { code: chainGroupCode })}
-                </span>
-              )}
-              {showChainMeta && typeof chainOrderIndex === "number" && Number.isFinite(chainOrderIndex) && (
-                <span className="kanban-card-badge is-sequence">
-                  {t("kanban.task.detail.chainOrder", { order: chainOrderIndex })}
-                </span>
-              )}
-              {showExecutionTimeRange && (
-                <>
-                  <span className="kanban-card-badge is-timestamp">
-                    {t("kanban.task.detail.startedAt", {
-                      time: formatRunAt(executionStartedAt) ?? "-",
-                    })}
-                  </span>
-                  <span className="kanban-card-badge is-timestamp">
-                    {t("kanban.task.detail.finishedAt", {
-                      time: formatRunAt(executionFinishedAt) ?? "-",
-                    })}
-                  </span>
-                </>
+                  {hasTimeRangeBadge && (
+                    <span className="kanban-card-badge is-timestamp">
+                      {executionTimeRangeLabel}
+                    </span>
+                  )}
+                  {recurringRoundsLabel && (
+                    <span className="kanban-card-badge is-sequence">
+                      {recurringRoundsLabel}
+                    </span>
+                  )}
+                  {!placeGroupCodeInPrimary && chainGroupCodeLabel && (showChainMeta || isRecurringTask) && (
+                    <span className="kanban-card-badge is-chain-code" style={chainGroupBadgeStyle}>
+                      {chainGroupCodeLabel}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           )}

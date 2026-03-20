@@ -17,6 +17,7 @@ import { KanbanColumn } from "./KanbanColumn";
 import { TaskCreateModal } from "./TaskCreateModal";
 import { describeSchedule } from "../utils/scheduling";
 import { formatKanbanBlockedReason } from "../utils/blockedReason";
+import { chainPositionOfTask, resolveChainedDragBlockedReason } from "../utils/chaining";
 
 type CreateTaskInput = {
   workspaceId: string;
@@ -31,6 +32,169 @@ type CreateTaskInput = {
   schedule?: KanbanTaskSchedule;
   chain?: KanbanTaskChain;
 };
+
+type RecurringGroupDescriptor = {
+  signature: string;
+  seriesId: string | null;
+};
+
+function resolveRecurringGroupDescriptor(task: KanbanTask): RecurringGroupDescriptor | null {
+  const schedule = task.schedule;
+  if (
+    schedule?.mode !== "recurring" ||
+    schedule.recurringExecutionMode !== "new_thread"
+  ) {
+    return null;
+  }
+  const signature = [
+    task.workspaceId,
+    task.panelId,
+    task.title,
+    String(schedule.interval ?? 1),
+    schedule.unit ?? "days",
+    schedule.newThreadResultMode ?? "pass",
+  ].join("|");
+  const seriesId =
+    typeof schedule.seriesId === "string" && schedule.seriesId.trim().length > 0
+      ? schedule.seriesId.trim()
+      : null;
+  return { signature, seriesId };
+}
+
+function resolveTaskChainGroupId(allTasks: KanbanTask[], task: KanbanTask): string | null {
+  if (task.chain?.groupId) {
+    return task.chain.groupId;
+  }
+  return (
+    allTasks.find((entry) => entry.chain?.previousTaskId === task.id)?.chain?.groupId ??
+    null
+  );
+}
+
+function resolveRecurringRunIndex(task: KanbanTask): number | null {
+  const schedule = task.schedule;
+  if (schedule?.mode !== "recurring" || schedule.recurringExecutionMode !== "new_thread") {
+    return null;
+  }
+  const completedRounds = Math.max(0, schedule.completedRounds ?? 0);
+  if (task.status === "testing" || task.status === "done") {
+    return Math.max(1, completedRounds);
+  }
+  return completedRounds + 1;
+}
+
+function resolveTaskSerialOrder(allTasks: KanbanTask[], task: KanbanTask): number | null {
+  const chainGroupId = resolveTaskChainGroupId(allTasks, task);
+  if (chainGroupId) {
+    return chainPositionOfTask(allTasks, task.id);
+  }
+  return resolveRecurringRunIndex(task);
+}
+
+function sortTasksForColumnDisplay(columnTasks: KanbanTask[], allTasks: KanbanTask[]): KanbanTask[] {
+  if (columnTasks.length <= 1) {
+    return columnTasks.slice();
+  }
+
+  const chainGroupByTaskId = new Map<string, string>();
+  for (const task of allTasks) {
+    if (!task.chain?.groupId) {
+      continue;
+    }
+    chainGroupByTaskId.set(task.id, task.chain.groupId);
+    if (task.chain.previousTaskId) {
+      chainGroupByTaskId.set(task.chain.previousTaskId, task.chain.groupId);
+    }
+  }
+
+  const recurringDescriptors = new Map<string, RecurringGroupDescriptor>();
+  const recurringSeriesBySignature = new Map<string, Set<string>>();
+  for (const task of columnTasks) {
+    const descriptor = resolveRecurringGroupDescriptor(task);
+    if (!descriptor) {
+      continue;
+    }
+    recurringDescriptors.set(task.id, descriptor);
+    if (descriptor.seriesId) {
+      const current = recurringSeriesBySignature.get(descriptor.signature) ?? new Set<string>();
+      current.add(descriptor.seriesId);
+      recurringSeriesBySignature.set(descriptor.signature, current);
+    }
+  }
+
+  const taskGroupKeyByTaskId = new Map<string, string>();
+  const groupedTaskIdsByKey = new Map<string, string[]>();
+  for (const task of columnTasks) {
+    const recurringDescriptor = recurringDescriptors.get(task.id);
+    if (recurringDescriptor) {
+      const signatureSeries = recurringSeriesBySignature.get(recurringDescriptor.signature);
+      const hasSingleSeries = (signatureSeries?.size ?? 0) === 1;
+      const preferredSeriesId =
+        recurringDescriptor.seriesId ??
+        (hasSingleSeries ? Array.from(signatureSeries as Set<string>)[0] : null);
+      const recurringGroupKey = preferredSeriesId
+        ? `recurring:${preferredSeriesId}`
+        : `recurring:sig:${recurringDescriptor.signature}`;
+      taskGroupKeyByTaskId.set(task.id, recurringGroupKey);
+      groupedTaskIdsByKey.set(recurringGroupKey, [
+        ...(groupedTaskIdsByKey.get(recurringGroupKey) ?? []),
+        task.id,
+      ]);
+      continue;
+    }
+
+    const chainGroupId = task.chain?.groupId ?? chainGroupByTaskId.get(task.id);
+    if (!chainGroupId) {
+      continue;
+    }
+    const chainGroupKey = `chain:${chainGroupId}`;
+    taskGroupKeyByTaskId.set(task.id, chainGroupKey);
+    groupedTaskIdsByKey.set(chainGroupKey, [
+      ...(groupedTaskIdsByKey.get(chainGroupKey) ?? []),
+      task.id,
+    ]);
+  }
+
+  const groupedTaskIdsSet = new Set<string>();
+  const groupedTaskOrder: KanbanTask[] = [];
+  const resolvedGroupOrder = new Set<string>();
+  const tasksById = new Map(columnTasks.map((task) => [task.id, task]));
+  for (const task of columnTasks) {
+    const groupKey = taskGroupKeyByTaskId.get(task.id);
+    if (!groupKey || resolvedGroupOrder.has(groupKey)) {
+      continue;
+    }
+    const groupTaskIds = groupedTaskIdsByKey.get(groupKey) ?? [];
+    if (groupTaskIds.length < 2) {
+      continue;
+    }
+    resolvedGroupOrder.add(groupKey);
+    const groupTasks = groupTaskIds
+      .map((taskId) => tasksById.get(taskId))
+      .filter((entry): entry is KanbanTask => Boolean(entry));
+    groupTasks.sort((a, b) => {
+      const serialA = resolveTaskSerialOrder(allTasks, a);
+      const serialB = resolveTaskSerialOrder(allTasks, b);
+      if (serialA !== null && serialB !== null && serialA !== serialB) {
+        return serialA - serialB;
+      }
+      if (serialA !== null && serialB === null) {
+        return -1;
+      }
+      if (serialA === null && serialB !== null) {
+        return 1;
+      }
+      return a.sortOrder - b.sortOrder;
+    });
+    for (const groupedTask of groupTasks) {
+      groupedTaskIdsSet.add(groupedTask.id);
+      groupedTaskOrder.push(groupedTask);
+    }
+  }
+
+  const singleTasks = columnTasks.filter((task) => !groupedTaskIdsSet.has(task.id));
+  return [...groupedTaskOrder, ...singleTasks];
+}
 
 type KanbanBoardProps = {
   workspace: WorkspaceInfo;
@@ -140,9 +304,10 @@ export function KanbanBoard({
     }
     for (const key of Object.keys(map) as KanbanTaskStatus[]) {
       map[key].sort((a, b) => a.sortOrder - b.sortOrder);
+      map[key] = sortTasksForColumnDisplay(map[key], tasks);
     }
     return map;
-  }, [filteredTasks]);
+  }, [filteredTasks, tasks]);
 
   const handleDragEnd = useCallback(
     (result: DropResult) => {
@@ -162,28 +327,6 @@ export function KanbanBoard({
         return;
       }
 
-      if (
-        destStatus === "inprogress" &&
-        sourceStatus !== "inprogress" &&
-        draggedTask.chain?.previousTaskId
-      ) {
-        onUpdateTask(draggedTask.id, {
-          chain: {
-            ...(draggedTask.chain ?? {
-              groupId: draggedTask.id,
-              previousTaskId: null,
-            }),
-            blockedReason: "chain_requires_head_trigger",
-          },
-          execution: {
-            ...(draggedTask.execution ?? {}),
-            lastSource: "drag",
-            blockedReason: "chain_requires_head_trigger",
-          },
-        });
-        return;
-      }
-
       const chainGroupByTaskId = new Map<string, string>();
       for (const task of tasks) {
         if (!task.chain?.groupId) {
@@ -197,6 +340,33 @@ export function KanbanBoard({
       const resolveTaskGroupId = (taskId: string): string | null => {
         return chainGroupByTaskId.get(taskId) ?? null;
       };
+      const draggedGroupId = resolveTaskGroupId(draggedTask.id);
+      const isTaskInChain = Boolean(draggedGroupId);
+      const isChainHead = isTaskInChain && !draggedTask.chain?.previousTaskId;
+
+      const chainedDragBlockedReason =
+        sourceStatus !== destStatus
+          ? resolveChainedDragBlockedReason(draggedTask, sourceStatus, destStatus, {
+              isTaskInChain,
+            })
+          : null;
+      if (chainedDragBlockedReason) {
+        onUpdateTask(draggedTask.id, {
+          chain: {
+            ...(draggedTask.chain ?? {
+              groupId: resolveTaskGroupId(draggedTask.id) ?? draggedTask.id,
+              previousTaskId: null,
+            }),
+            blockedReason: chainedDragBlockedReason,
+          },
+          execution: {
+            ...(draggedTask.execution ?? {}),
+            lastSource: "drag",
+            blockedReason: chainedDragBlockedReason,
+          },
+        });
+        return;
+      }
       const destinationSlots = [...tasksByColumn[destStatus]];
       if (sourceStatus === destStatus) {
         const sourceTaskIndex = destinationSlots.findIndex((task) => task.id === draggableId);
@@ -212,7 +382,6 @@ export function KanbanBoard({
         beforeGroupId && afterGroupId && beforeGroupId === afterGroupId
           ? beforeGroupId
           : null;
-      const draggedGroupId = resolveTaskGroupId(draggedTask.id);
       if (slotGroupId && draggedGroupId !== slotGroupId) {
         onUpdateTask(draggedTask.id, {
           execution: {
@@ -246,6 +415,47 @@ export function KanbanBoard({
 
       // Auto-execute when dragging to "inprogress" from another column
       if (destStatus === "inprogress" && sourceStatus !== "inprogress") {
+        if (sourceStatus === "testing" && isChainHead && draggedGroupId) {
+          const downstreamTasks = tasks
+            .filter(
+              (task) => task.id !== draggedTask.id && resolveTaskGroupId(task.id) === draggedGroupId,
+            )
+            .slice()
+            .sort(
+              (a, b) => chainPositionOfTask(tasks, a.id) - chainPositionOfTask(tasks, b.id),
+            );
+          const downstreamTaskIds = new Set(downstreamTasks.map((task) => task.id));
+          const todoTasksExcludingDownstream = tasksByColumn.todo.filter(
+            (task) => task.id !== draggedTask.id && !downstreamTaskIds.has(task.id),
+          );
+          const maxTodoSortOrder = todoTasksExcludingDownstream.reduce(
+            (max, task) => Math.max(max, task.sortOrder),
+            0,
+          );
+          let nextTodoSortOrder = maxTodoSortOrder + 1000;
+          for (const downstreamTask of downstreamTasks) {
+            if (downstreamTask.status !== "todo") {
+              onReorderTask(downstreamTask.id, "todo", nextTodoSortOrder);
+              nextTodoSortOrder += 1000;
+            }
+            onUpdateTask(downstreamTask.id, {
+              chain: {
+                ...(downstreamTask.chain ?? {
+                  groupId: draggedGroupId,
+                  previousTaskId: null,
+                }),
+                blockedReason: "chain_requires_head_trigger",
+              },
+              execution: {
+                ...(downstreamTask.execution ?? {}),
+                lastSource: "drag",
+                blockedReason: "chain_requires_head_trigger",
+                startedAt: null,
+                finishedAt: null,
+              },
+            });
+          }
+        }
         onDragToInProgress(draggedTask);
       }
     },
