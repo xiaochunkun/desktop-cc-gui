@@ -94,7 +94,10 @@ fn acquire_client_store_lock(path: &Path) -> Result<ClientStoreFileLock, String>
     }
 }
 
-fn with_client_store_lock<T>(path: &Path, op: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+fn with_client_store_lock<T>(
+    path: &Path,
+    op: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let _lock_guard = acquire_client_store_lock(path)?;
     op()
 }
