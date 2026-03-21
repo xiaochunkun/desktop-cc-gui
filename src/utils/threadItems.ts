@@ -2175,13 +2175,11 @@ function stripInjectedProjectMemoryBlock(text: string) {
   }
   let normalized = text;
   let changed = false;
-  while (true) {
-    const trimmedLeading = normalized.trimStart();
-    if (!PROJECT_MEMORY_BLOCK_REGEX.test(trimmedLeading)) {
-      break;
-    }
+  let trimmedLeading = normalized.trimStart();
+  while (PROJECT_MEMORY_BLOCK_REGEX.test(trimmedLeading)) {
     normalized = trimmedLeading.replace(PROJECT_MEMORY_BLOCK_REGEX, "");
     changed = true;
+    trimmedLeading = normalized.trimStart();
   }
 
   const blocks = normalized.trimStart().split(MESSAGE_PARAGRAPH_BREAK_SPLIT_REGEX);

@@ -696,7 +696,7 @@ export function WorkspaceSessionActivityPanel({
       return;
     }
     const dismissedMap = readSoloFollowCoachDismissedByWorkspace();
-    setShowFollowCoach(!Boolean(dismissedMap[workspaceId]));
+    setShowFollowCoach(!dismissedMap[workspaceId]);
   }, [liveEditPreviewEnabled, onToggleLiveEditPreview, soloFollowDiscoveryFlags.coach, workspaceId]);
 
   useEffect(() => {
@@ -1013,14 +1013,6 @@ export function WorkspaceSessionActivityPanel({
     }
   }, [expandedExpandableIds, viewModel.timeline]);
 
-  if (!workspaceId) {
-    return (
-      <div className="session-activity-panel">
-        <div className="session-activity-empty">{t("activityPanel.selectWorkspace")}</div>
-      </div>
-    );
-  }
-
   const handleToggleExpand = (
     eventId: string,
     options?: { isRunning?: boolean },
@@ -1277,6 +1269,14 @@ export function WorkspaceSessionActivityPanel({
       window.removeEventListener("scroll", updateFollowBubbleGeometry, true);
     };
   }, [shouldShowFollowBubble]);
+
+  if (!workspaceId) {
+    return (
+      <div className="session-activity-panel">
+        <div className="session-activity-empty">{t("activityPanel.selectWorkspace")}</div>
+      </div>
+    );
+  }
 
   const followBubbleNode =
     shouldShowFollowBubble && followBubbleGeometry ? (
