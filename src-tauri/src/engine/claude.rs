@@ -1638,12 +1638,41 @@ impl ClaudeSession {
         resume_params.continue_session = true;
         resume_params.session_id = Some(sid);
         resume_params.images = None;
+        let use_stream_json_input = Self::should_use_stream_json_input(&resume_params);
 
-        let mut cmd = self.build_command(&resume_params, false);
+        let mut cmd = self.build_command(&resume_params, use_stream_json_input);
         match cmd.spawn() {
             Ok(mut new_child) => {
-                // Drop stdin immediately for the resume
-                drop(new_child.stdin.take());
+                if use_stream_json_input {
+                    if let Some(mut stdin) = new_child.stdin.take() {
+                        let message = match build_message_content(&resume_params) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                log::error!("Failed to build resume message content: {}", error);
+                                return None;
+                            }
+                        };
+                        let message_str = match serde_json::to_string(&message) {
+                            Ok(value) => value,
+                            Err(error) => {
+                                log::error!("Failed to serialize resume message: {}", error);
+                                return None;
+                            }
+                        };
+                        if let Err(error) = stdin.write_all(message_str.as_bytes()).await {
+                            log::error!("Failed to write resume message to stdin: {}", error);
+                            return None;
+                        }
+                        if let Err(error) = stdin.write_all(b"\n").await {
+                            log::error!("Failed to write resume newline to stdin: {}", error);
+                            return None;
+                        }
+                        drop(stdin);
+                    }
+                } else {
+                    // Drop stdin immediately for non-stream-json resume requests.
+                    drop(new_child.stdin.take());
+                }
 
                 let new_lines = new_child
                     .stdout
@@ -2059,6 +2088,36 @@ mod tests {
             .windows(2)
             .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
         assert!(args.iter().all(|arg| arg != "line1\nline2"));
+    }
+
+    #[test]
+    fn build_resume_command_uses_stream_json_for_multiline_answer() {
+        let session = ClaudeSession::new(
+            "test-workspace".to_string(),
+            PathBuf::from("/tmp/test"),
+            None,
+        );
+        let mut params = SendMessageParams::default();
+        params.text = "line1\r\nline2".to_string();
+        params.continue_session = true;
+        params.session_id = Some("33333333-3333-4333-8333-333333333333".to_string());
+        params.images = None;
+
+        let use_stream_json_input = ClaudeSession::should_use_stream_json_input(&params);
+        let command = session.build_command(&params, use_stream_json_input);
+        let args: Vec<String> = command
+            .as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+
+        assert!(args
+            .windows(2)
+            .any(|window| { window[0] == "--resume" && window[1] == "33333333-3333-4333-8333-333333333333" }));
+        assert!(args
+            .windows(2)
+            .any(|window| { window[0] == "--input-format" && window[1] == "stream-json" }));
+        assert!(args.iter().all(|arg| arg != "line1\r\nline2"));
     }
 
     #[test]

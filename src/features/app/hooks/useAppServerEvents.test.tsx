@@ -1551,6 +1551,62 @@ describe("useAppServerEvents", () => {
     });
   });
 
+  it("keeps claude agent completion when only snapshot and completed arrive in normalized mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers, {
+      useNormalizedRealtimeAdapters: true,
+    });
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-snapshot-only-1",
+            item: {
+              id: "assistant-snapshot-only-1",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-snapshot-only-1",
+            item: {
+              id: "assistant-snapshot-only-1",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-snapshot-only-1",
+      itemId: "assistant-snapshot-only-1",
+      text: "snapshot-only-text",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it("routes claude text:delta through normalized adapters with thread-scoped fallback id when itemId is missing", async () => {
     const handlers: Handlers = {
       onAgentMessageDelta: vi.fn(),
@@ -1764,6 +1820,60 @@ describe("useAppServerEvents", () => {
       threadId: "claude:session-seq-2",
       itemId: "assistant-seq-2",
       text: "第一段第二段",
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps claude agent completion when only snapshot and completed arrive in legacy mode", async () => {
+    const handlers: Handlers = {
+      onAgentMessageDelta: vi.fn(),
+      onAgentMessageCompleted: vi.fn(),
+      onItemUpdated: vi.fn(),
+    };
+    const { root } = await mount(handlers);
+
+    act(() => {
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/updated",
+          params: {
+            threadId: "claude:session-snapshot-only-2",
+            item: {
+              id: "assistant-snapshot-only-2",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+      listener?.({
+        workspace_id: "ws-claude",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "claude:session-snapshot-only-2",
+            item: {
+              id: "assistant-snapshot-only-2",
+              type: "agentMessage",
+              text: "snapshot-only-text",
+            },
+          },
+        },
+      });
+    });
+
+    expect(handlers.onAgentMessageDelta).not.toHaveBeenCalled();
+    expect(handlers.onItemUpdated).not.toHaveBeenCalled();
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledTimes(1);
+    expect(handlers.onAgentMessageCompleted).toHaveBeenCalledWith({
+      workspaceId: "ws-claude",
+      threadId: "claude:session-snapshot-only-2",
+      itemId: "assistant-snapshot-only-2",
+      text: "snapshot-only-text",
     });
 
     await act(async () => {
