@@ -2135,7 +2135,7 @@
 .vendor-gemini-shell {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .vendor-gemini-banner {
@@ -2243,18 +2243,28 @@
 .vendor-gemini-primary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
-  gap: 10px;
-  align-items: start;
+  gap: 8px;
+  align-items: stretch;
 }
 
 .vendor-gemini-card {
   border: 1px solid var(--border-muted);
   border-radius: 12px;
   background: var(--surface-card);
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+}
+
+.vendor-gemini-primary-grid > .vendor-gemini-card {
+  height: 100%;
+  align-self: stretch;
+}
+
+.vendor-gemini-card-env {
+  width: 100%;
+  align-self: stretch;
 }
 
 .vendor-gemini-card-checks {
@@ -2265,14 +2275,21 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+}
+
+.vendor-gemini-auth-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .vendor-gemini-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .vendor-gemini-section-title {
@@ -2284,15 +2301,15 @@
 .vendor-gemini-check-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .vendor-gemini-check-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 7px 9px;
   border: 1px solid var(--border-muted);
   border-radius: 8px;
   background: linear-gradient(
@@ -2306,17 +2323,17 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .vendor-gemini-check-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .vendor-gemini-check-message {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
@@ -2351,13 +2368,13 @@
 
 .vendor-gemini-empty-checks {
   grid-column: 1 / -1;
-  padding: 10px 2px;
-  font-size: 12px;
+  padding: 6px 2px;
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
 .vendor-gemini-env-editor {
-  min-height: 152px;
+  min-height: 128px;
   border-radius: 10px;
   border: 1px solid var(--border-muted);
   background: color-mix(in srgb, var(--surface-card-strong) 92%, transparent);
@@ -2388,14 +2405,10 @@
   gap: 3px;
 }
 
-.vendor-gemini-auth-enabled {
-  margin-bottom: 2px;
-}
-
 .vendor-gemini-auth-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
+  gap: 6px 8px;
   align-items: start;
 }
 
@@ -2407,8 +2420,41 @@
   grid-column: 1 / -1;
 }
 
+.vendor-gemini-auth-mode-trigger {
+  min-height: 30px;
+  border-color: var(--border-muted);
+  background: var(--surface-card);
+  font-size: 12px;
+}
+
+.vendor-gemini-auth-mode-selected,
+.vendor-gemini-auth-mode-option {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vendor-gemini-auth-mode-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.vendor-gemini-auth-mode-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-gemini-auth-mode-popup {
+  max-height: 260px;
+}
+
 .vendor-gemini-card-auth .vendor-input {
-  padding: 6px 9px;
+  padding: 5px 8px;
   font-size: 12px;
 }
 
@@ -2822,6 +2868,11 @@
   .vendor-gemini-auth-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .vendor-gemini-auth-header-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .vendor-gemini-actions-row {

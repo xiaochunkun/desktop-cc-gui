@@ -1,11 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Cloud, KeyRound, LogIn, Settings2 } from "lucide-react";
+import type { ComponentType } from "react";
 import Eye from "lucide-react/dist/esm/icons/eye";
 import EyeOff from "lucide-react/dist/esm/icons/eye-off";
 import ExternalLink from "lucide-react/dist/esm/icons/external-link";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Save from "lucide-react/dist/esm/icons/save";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { GEMINI_AUTH_MODES, type GeminiAuthMode } from "../types";
 import { useGeminiVendorManagement } from "../hooks/useGeminiVendorManagement";
 
@@ -20,16 +28,14 @@ function modeLabel(t: (key: string) => string, mode: GeminiAuthMode): string {
   return "Vertex AI API Key";
 }
 
-function modeHint(t: (key: string) => string, mode: GeminiAuthMode): string {
-  if (mode === "custom") return t("settings.vendor.gemini.hint.custom");
-  if (mode === "login_google") return t("settings.vendor.gemini.hint.loginGoogle");
-  if (mode === "gemini_api_key") return t("settings.vendor.gemini.hint.geminiApiKey");
-  if (mode === "vertex_adc") return t("settings.vendor.gemini.hint.vertexAdc");
-  if (mode === "vertex_service_account") {
-    return t("settings.vendor.gemini.hint.vertexServiceAccount");
-  }
-  return t("settings.vendor.gemini.hint.vertexApiKey");
-}
+const GEMINI_AUTH_MODE_ICON_MAP = {
+  custom: Settings2,
+  login_google: LogIn,
+  gemini_api_key: KeyRound,
+  vertex_adc: Cloud,
+  vertex_service_account: Cloud,
+  vertex_api_key: Cloud,
+} as const satisfies Record<GeminiAuthMode, ComponentType<{ className?: string }>>;
 
 export function GeminiVendorPanel() {
   const { t } = useTranslation();
@@ -46,7 +52,6 @@ export function GeminiVendorPanel() {
     refreshPreflight,
     handleDraftEnvTextChange,
     handleSaveEnv,
-    handleEnabledChange,
     handleGeminiAuthModeChange,
     handleGeminiFieldChange,
     handleSaveConfig,
@@ -65,6 +70,7 @@ export function GeminiVendorPanel() {
     draft.authMode === "vertex_api_key" ? "GOOGLE_API_KEY" : "GEMINI_API_KEY";
   const keyValue =
     draft.authMode === "vertex_api_key" ? draft.googleApiKey : draft.geminiApiKey;
+  const SelectedAuthModeIcon = GEMINI_AUTH_MODE_ICON_MAP[draft.authMode];
 
   return (
     <div className="vendor-gemini-shell">
@@ -120,76 +126,74 @@ export function GeminiVendorPanel() {
               <label className="vendor-gemini-section-title">
                 {t("settings.vendor.gemini.authConfig")}
               </label>
-              <p className="vendor-gemini-help">
-                {t("settings.vendor.gemini.authConfigDescription")}
-              </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                openUrl("https://geminicli.com/docs/get-started/authentication/").catch(
-                  () => {},
-                );
-              }}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              {t("settings.vendor.gemini.viewAuthDoc")}
-            </Button>
-          </div>
-
-          <div className="vendor-form-group vendor-gemini-auth-enabled">
-            <label className="vendor-input-row" htmlFor="gemini-vendor-enabled">
-              <input
-                id="gemini-vendor-enabled"
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => handleEnabledChange(event.target.checked)}
-              />
-              <span>{t("settings.vendor.gemini.enabledSwitch")}</span>
-            </label>
-            <div className="vendor-hint">
-              {draft.enabled
-                ? t("settings.vendor.gemini.enabled")
-                : t("settings.vendor.gemini.disabled")}
+            <div className="vendor-gemini-auth-header-actions">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  openUrl("https://geminicli.com/docs/get-started/authentication/").catch(
+                    () => {},
+                  );
+                }}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {t("settings.vendor.gemini.viewAuthDoc")}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  void handleSaveConfig();
+                }}
+                disabled={savingConfig}
+              >
+                <Save className="h-3.5 w-3.5" />
+                {savingConfig
+                  ? t("settings.vendor.gemini.saving")
+                  : t("settings.vendor.gemini.saveConfig")}
+              </Button>
             </div>
           </div>
 
           <div className="vendor-gemini-auth-grid">
-            <div className="vendor-form-group vendor-gemini-auth-field">
-              <label htmlFor="gemini-auth-mode">{t("settings.vendor.gemini.authMode")}</label>
-              <select
-                id="gemini-auth-mode"
-                className="vendor-input"
+            <div className="vendor-form-group vendor-gemini-auth-field vendor-gemini-auth-field-wide">
+              <Select
                 value={draft.authMode}
-                onChange={(event) => {
-                  const nextMode = event.target.value as GeminiAuthMode;
+                onValueChange={(nextValue) => {
+                  const nextMode = nextValue as GeminiAuthMode;
                   if (GEMINI_AUTH_MODES.includes(nextMode)) {
                     handleGeminiAuthModeChange(nextMode);
                   }
                 }}
               >
-                {GEMINI_AUTH_MODES.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {modeLabel(t, mode)}
-                  </option>
-                ))}
-              </select>
-              <div className="vendor-hint">{modeHint(t, draft.authMode)}</div>
-            </div>
-
-            <div className="vendor-form-group vendor-gemini-auth-field">
-              <label htmlFor="gemini-model">Model</label>
-              <input
-                id="gemini-model"
-                className="vendor-input"
-                value={draft.model}
-                placeholder="gemini-3-pro-preview"
-                onChange={(event) => {
-                  handleGeminiFieldChange("model", event.target.value);
-                }}
-              />
-              <div className="vendor-hint">{t("settings.vendor.gemini.modelHintDefault")}</div>
+                <SelectTrigger
+                  id="gemini-auth-mode"
+                  className="vendor-gemini-auth-mode-trigger"
+                  aria-label={t("settings.vendor.gemini.authMode")}
+                >
+                  <span className="vendor-gemini-auth-mode-selected">
+                    <SelectedAuthModeIcon className="vendor-gemini-auth-mode-icon" />
+                    <span className="vendor-gemini-auth-mode-text">
+                      {modeLabel(t, draft.authMode)}
+                    </span>
+                  </span>
+                </SelectTrigger>
+                <SelectPopup className="vendor-gemini-auth-mode-popup">
+                  {GEMINI_AUTH_MODES.map((mode) => {
+                    const ModeIcon = GEMINI_AUTH_MODE_ICON_MAP[mode];
+                    return (
+                      <SelectItem key={mode} value={mode}>
+                        <span className="vendor-gemini-auth-mode-option">
+                          <ModeIcon className="vendor-gemini-auth-mode-icon" />
+                          <span className="vendor-gemini-auth-mode-text">
+                            {modeLabel(t, mode)}
+                          </span>
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectPopup>
+              </Select>
             </div>
 
             {shouldShowApiBaseUrl && (
@@ -289,21 +293,6 @@ export function GeminiVendorPanel() {
                 />
               </div>
             )}
-          </div>
-
-          <div className="vendor-gemini-actions-row">
-            <Button
-              size="sm"
-              onClick={() => {
-                void handleSaveConfig();
-              }}
-              disabled={savingConfig}
-            >
-              <Save className="h-3.5 w-3.5" />
-              {savingConfig
-                ? t("settings.vendor.gemini.saving")
-                : t("settings.vendor.gemini.saveConfig")}
-            </Button>
           </div>
         </section>
       </div>
