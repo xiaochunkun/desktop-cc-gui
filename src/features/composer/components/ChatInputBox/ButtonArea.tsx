@@ -10,6 +10,11 @@ import type { CodexCustomModel } from '../../types/provider';
 const NOOP_MODE = (_mode: PermissionMode) => {};
 const NOOP_MODEL = (_modelId: string) => {};
 const NOOP_REASONING = (_effort: ReasoningEffort) => {};
+const CLAUDE_MODEL_MAPPING_KEY_BY_ID: Record<string, 'haiku' | 'sonnet' | 'opus'> = {
+  'claude-haiku-4-5': 'haiku',
+  'claude-sonnet-4-6': 'sonnet',
+  'claude-opus-4-6': 'opus',
+};
 
 /**
  * Get custom Codex model list from localStorage
@@ -177,15 +182,7 @@ export const ButtonArea = ({
    * Maps base model IDs to actual model names (e.g., versions with capacity suffixes)
    */
   const applyModelMapping = useCallback((model: ModelInfo, mapping: { haiku?: string; sonnet?: string; opus?: string }): ModelInfo => {
-    const normalizedId = model.id.toLowerCase();
-    const key =
-      normalizedId.includes('haiku')
-        ? 'haiku'
-        : normalizedId.includes('sonnet')
-          ? 'sonnet'
-          : normalizedId.includes('opus')
-            ? 'opus'
-            : undefined;
+    const key = CLAUDE_MODEL_MAPPING_KEY_BY_ID[model.id];
     if (key && mapping[key]) {
       const actualModel = String(mapping[key]).trim();
       if (actualModel.length > 0) {

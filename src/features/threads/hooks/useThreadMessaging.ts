@@ -382,6 +382,46 @@ function mapNetworkErrorToUserMessage(
   };
 }
 
+function normalizeSessionIdCandidate(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    return normalized && normalized !== "pending" ? normalized : null;
+  }
+  if (typeof value === "number") {
+    const normalized = String(value).trim();
+    return normalized && normalized !== "pending" ? normalized : null;
+  }
+  return null;
+}
+
+function extractSessionIdFromEngineSendResponse(
+  response: Record<string, unknown>,
+): string | null {
+  const result =
+    response.result && typeof response.result === "object"
+      ? (response.result as Record<string, unknown>)
+      : null;
+  const thread =
+    result?.thread && typeof result.thread === "object"
+      ? (result.thread as Record<string, unknown>)
+      : null;
+  const candidates = [
+    response.sessionId,
+    response.session_id,
+    result?.sessionId,
+    result?.session_id,
+    thread?.sessionId,
+    thread?.session_id,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeSessionIdCandidate(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
 function resolveRecoverableCodexFirstPacketTimeout(
   engine: EngineType,
   rawMessage: string,
@@ -496,6 +536,7 @@ export function useThreadMessaging({
 }: UseThreadMessagingOptions) {
   const { t, i18n } = useTranslation();
   const lastOpenCodeModelByThreadRef = useRef<Map<string, string>>(new Map());
+  const claudeSessionIdByPendingThreadRef = useRef<Map<string, string>>(new Map());
   const sessionSpecLinkByThreadRef = useRef<Map<string, SessionSpecLinkContext>>(new Map());
   const normalizeEngineSelection = useCallback(
     (
@@ -1007,6 +1048,8 @@ export function useThreadMessaging({
         const realSessionId =
           resolvedEngine === "claude" && isClaudeSession
             ? threadId.slice("claude:".length)
+            : resolvedEngine === "claude" && threadId.startsWith("claude-pending-")
+              ? (claudeSessionIdByPendingThreadRef.current.get(threadId) ?? null)
             : resolvedEngine === "gemini" && threadId.startsWith("gemini:")
               ? threadId.slice("gemini:".length)
             : resolvedEngine === "opencode" && isOpenCodeSession
@@ -1075,6 +1118,25 @@ export function useThreadMessaging({
             }
             safeMessageActivity();
             return;
+          }
+
+          if (resolvedEngine === "claude" && threadId.startsWith("claude-pending-")) {
+            const responseSessionId = extractSessionIdFromEngineSendResponse(response);
+            if (responseSessionId) {
+              claudeSessionIdByPendingThreadRef.current.set(threadId, responseSessionId);
+              onDebug?.({
+                id: `${Date.now()}-client-claude-session-cache`,
+                timestamp: Date.now(),
+                source: "client",
+                label: "thread/session cached",
+                payload: {
+                  workspaceId: workspace.id,
+                  threadId,
+                  sessionId: responseSessionId,
+                  source: "engineSendMessageResponse",
+                },
+              });
+            }
           }
 
           // Extract turn ID - streaming events will handle the rest

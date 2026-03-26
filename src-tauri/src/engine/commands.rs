@@ -2047,6 +2047,7 @@ pub async fn engine_send_message(
                 );
             }
 
+            let response_session_id = resolved_session_id.clone();
             let params = super::SendMessageParams {
                 text,
                 model: sanitized_model,
@@ -2187,7 +2188,9 @@ pub async fn engine_send_message(
             // Return immediately with turn info (frontend will receive streaming events)
             Ok(json!({
                 "engine": "claude",
+                "sessionId": response_session_id.clone(),
                 "result": {
+                    "sessionId": response_session_id.clone(),
                     "turn": {
                         "id": turn_id,
                         "status": "started"
@@ -2614,6 +2617,7 @@ pub async fn engine_send_message_sync(
                     }
                 });
 
+            let response_session_id = resolved_session_id.clone();
             let params = super::SendMessageParams {
                 text,
                 model: sanitized_model,
@@ -2643,6 +2647,7 @@ pub async fn engine_send_message_sync(
 
             Ok(json!({
                 "engine": "claude",
+                "sessionId": response_session_id,
                 "text": response
             }))
         }

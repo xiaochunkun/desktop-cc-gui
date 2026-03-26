@@ -704,4 +704,20 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
 
     expect(latest.selectedModel).toBe('');
   });
+
+  it('falls back to default claude model when claude has no models yet', async () => {
+    renderAdapter({
+      selectedEngine: 'claude',
+      selectedModelId: null,
+      models: [],
+    });
+
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+
+    const latest = mockState.latestProps as {
+      selectedModel?: string;
+    };
+
+    expect(latest.selectedModel).toBe('claude-sonnet-4-6');
+  });
 });

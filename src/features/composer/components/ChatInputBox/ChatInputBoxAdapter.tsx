@@ -51,6 +51,7 @@ export type { ChatInputBoxHandle };
 const STREAMING_ENABLED_STORAGE_KEY = 'mossx.composer.streaming-enabled';
 const MESSAGE_QUEUE_PREVIEW_LIMIT = 120;
 const LOCAL_SETTINGS_PROVIDER_ID = '__local_settings_json__';
+const DEFAULT_CLAUDE_MODEL_ID = 'claude-sonnet-4-6';
 
 type ClaudeProviderLike = {
   id: string;
@@ -581,7 +582,7 @@ export const ChatInputBoxAdapter = forwardRef<ChatInputBoxHandle, ChatInputBoxAd
       if (models && models.length > 0) {
         return models[0]?.id ?? '';
       }
-      return '';
+      return selectedEngine === 'claude' ? DEFAULT_CLAUDE_MODEL_ID : '';
     }, [models, selectedEngine, selectedModelId]);
 
     // Expose ChatInputBoxHandle to parent

@@ -393,6 +393,146 @@ describe("useThreadMessaging", () => {
     expect(engineSendMessage).toHaveBeenCalledTimes(1);
   });
 
+  it("reuses response-derived session id for follow-up sends on claude pending thread", async () => {
+    vi.mocked(engineSendMessage)
+      .mockResolvedValueOnce({
+        sessionId: "session-xyz",
+        result: { turn: { id: "turn-1" }, sessionId: "session-xyz" },
+      })
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-2" } },
+      });
+    const { result } = makeHook("claude", {
+      activeThreadId: "claude-pending-abc",
+      ensuredThreadId: "claude-pending-abc",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-abc",
+        "hello claude",
+      );
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-abc",
+        "follow up",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      1,
+      "ws-1",
+      expect.objectContaining({
+        engine: "claude",
+        continueSession: false,
+        sessionId: null,
+        threadId: "claude-pending-abc",
+      }),
+    );
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      2,
+      "ws-1",
+      expect.objectContaining({
+        engine: "claude",
+        continueSession: true,
+        sessionId: "session-xyz",
+        threadId: "claude-pending-abc",
+      }),
+    );
+  });
+
+  it("accepts snake_case claude session_id for pending thread follow-up sends", async () => {
+    vi.mocked(engineSendMessage)
+      .mockResolvedValueOnce({
+        result: {
+          turn: { id: "turn-1" },
+          session_id: "session-snake",
+        },
+      })
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-2" } },
+      });
+    const { result } = makeHook("claude", {
+      activeThreadId: "claude-pending-snake",
+      ensuredThreadId: "claude-pending-snake",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-snake",
+        "hello claude",
+      );
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-snake",
+        "follow up",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      2,
+      "ws-1",
+      expect.objectContaining({
+        engine: "claude",
+        continueSession: true,
+        sessionId: "session-snake",
+        threadId: "claude-pending-snake",
+      }),
+    );
+  });
+
+  it("does not treat thread id as claude session id fallback", async () => {
+    vi.mocked(engineSendMessage)
+      .mockResolvedValueOnce({
+        result: {
+          turn: { id: "turn-1" },
+          thread: { id: "claude:session-from-thread-id" },
+        },
+      })
+      .mockResolvedValueOnce({
+        result: { turn: { id: "turn-2" } },
+      });
+    const { result } = makeHook("claude", {
+      activeThreadId: "claude-pending-def",
+      ensuredThreadId: "claude-pending-def",
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-def",
+        "hello claude",
+      );
+    });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "claude-pending-def",
+        "follow up",
+      );
+    });
+
+    expect(engineSendMessage).toHaveBeenNthCalledWith(
+      2,
+      "ws-1",
+      expect.objectContaining({
+        engine: "claude",
+        continueSession: false,
+        sessionId: null,
+        threadId: "claude-pending-def",
+      }),
+    );
+  });
+
   it("routes by thread ownership when active engine mismatches", async () => {
     const { result } = makeHook("codex");
 

@@ -175,6 +175,8 @@ import {
   resolveLatestUserMessage,
 } from "./features/session-activity/utils/sessionRadarPersistence";
 
+const DEFAULT_CLAUDE_MODEL_ID = "claude-sonnet-4-6";
+
 const SettingsView = lazy(() =>
   import("./features/settings/components/SettingsView").then((module) => ({
     default: module.SettingsView,
@@ -967,7 +969,7 @@ export function AppShell() {
     const engineSelection = engineSelectedModelIdByType[activeEngine] ?? null;
     if (engineModelsAsOptions.length === 0) {
       if (activeEngine === "claude") {
-        return engineSelection;
+        return engineSelection ?? DEFAULT_CLAUDE_MODEL_ID;
       }
       return engineSelection;
     }
@@ -1450,15 +1452,40 @@ export function AppShell() {
         return;
       }
       const force = options?.force ?? false;
-      if (!force && hydratedThreadListWorkspaceIdsRef.current.has(workspaceId)) {
+      const existingThreads = threadsByWorkspace[workspaceId] ?? [];
+      const isLoading = threadListLoadingByWorkspace[workspaceId] ?? false;
+      const hasHydratedThreadList =
+        hydratedThreadListWorkspaceIdsRef.current.has(workspaceId);
+      if (
+        !force &&
+        (isLoading ||
+          hasHydratedThreadList)
+      ) {
         return;
       }
       void listThreadsForWorkspaceTracked(workspace, {
         preserveState: options?.preserveState,
       });
     },
-    [listThreadsForWorkspaceTracked, workspacesById],
+    [
+      listThreadsForWorkspaceTracked,
+      threadListLoadingByWorkspace,
+      threadsByWorkspace,
+      workspacesById,
+    ],
   );
+  const autoHydratedActiveWorkspaceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      autoHydratedActiveWorkspaceIdRef.current = null;
+      return;
+    }
+    if (autoHydratedActiveWorkspaceIdRef.current === activeWorkspaceId) {
+      return;
+    }
+    autoHydratedActiveWorkspaceIdRef.current = activeWorkspaceId;
+    ensureWorkspaceThreadListLoaded(activeWorkspaceId, { preserveState: true });
+  }, [activeWorkspaceId, ensureWorkspaceThreadListLoaded]);
   const handleEnsureWorkspaceThreadsForSettings = useCallback(
     (workspaceId: string) => {
       ensureWorkspaceThreadListLoaded(workspaceId, { preserveState: true });
