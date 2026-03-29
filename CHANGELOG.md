@@ -11,15 +11,21 @@ English:
 - Complete missing Web Git RPC coverage in local daemon and split `daemon_state` into dedicated modules, making Web-mode Git actions more complete while improving daemon lifecycle maintainability
 - Harden multi-engine history-chain recovery in Web mode by reorganizing oversized bridge/runtime paths, reducing cross-engine history replay fragility and improving recovery consistency after interruptions
 - Refactor real-time canvas controls in the message flow into clearer control groups/constants, and fix focus-follow regressions so interaction context remains stable during live updates
+- Enhance Session Activity by exposing `search_query` tool-chain details and strengthening history replay recovery for better traceability
+- Unify `File changes` and `Batch` icon semantics with theme-aware color refinement for clearer visual scanning
+- Refresh the home-chat welcome area with client iconography and adjusted landing styles for stronger first-screen hierarchy
 
 🔧 Improvements
 - Align file-tree Git folder status coloring with actual changed-path semantics, including test and style alignment, so folder-level change scanning is more predictable and visually consistent
+- Migrate message-flow tests into modular suites and harden realtime control-button compatibility to reduce UI regression risk
 
 🐛 Fixes
 - Fix local web-service auto-start failures caused by daemon binary discovery issues by adding a more robust binary-location fallback path in bootstrap logic
 - Fix non-default project history fetching getting stuck after a single failed request by correcting error-state reset behavior in the Web loading chain
 - Fix packaged-build white screen issues caused by missing/incorrect Web static resource resolution by repairing runtime static path wiring
 - Fix duplicated skill chips/tokens when selecting same-name skills from multi-source entries (global/project overlap) by tightening token grouping and de-dup assembly logic
+- Reduce noisy "missing file" alerts from detached file-window monitoring to avoid unnecessary disruption
+- Fix screenshot-message side effects that could trigger unintended session switching and history-chain breaks in Claude threads
 
 中文：
 
@@ -28,15 +34,21 @@ English:
 - 补齐本地 daemon 在 Web 模式下缺失的 Git RPC 覆盖，并拆分 `daemon_state` 为独立职责模块，在提升 Git 操作完整度的同时改善 daemon 生命周期可维护性
 - 通过重组多引擎桥接与运行时链路、拆分超大 Web 模块，加固 Web 模式历史链路恢复能力，降低跨引擎会话回放在中断后的脆弱性
 - 重构消息实时幕布控制为更清晰的控制组与常量映射，并修复焦点跟随回归问题，保证实时更新时交互上下文稳定
+- 增强 Session Activity：补齐 `search_query` 工具链路展示并加固历史回放恢复能力，提升问题追踪可见性
+- 统一 `File changes` 与 `Batch` 图标语义并优化主题配色映射，提升工具卡视觉辨识度
+- 优化首页欢迎区首屏层次：新增客户端图标并调整欢迎样式编排
 
 🔧 Improvements
 - 对齐文件树 Git 文件夹状态着色与实际变更路径语义，并同步测试与样式表现，使目录级变更扫描更可预测、视觉反馈更一致
+- 将消息链路测试迁移为模块化结构，并加固实时控制按钮兼容性，降低后续 UI 演进时的回归风险
 
 🐛 Fixes
 - 修复本地 web-service 自动启动时 daemon 二进制定位失败的问题：在 bootstrap 链路增加更稳健的二进制定位兜底路径
 - 修复非默认项目历史拉取在单次失败后进入“锁死”状态的问题：纠正 Web 侧失败状态复位逻辑，恢复后续请求可继续执行
 - 修复安装包场景下 Web 静态资源解析缺失/错误导致白屏的问题：修正运行时静态资源路径装配链路
 - 修复同名 Skill 在多来源（global/project）并存时选择后出现重复 skill chip/token 的问题：收紧 token 分组键与去重组装逻辑
+- 修复 detached 文件窗口监控链路“文件缺失”告警噪声过高的问题，减少非必要打断
+- 修复截图消息导致 Claude 线程会话误切换与历史链路断裂的问题
 
 ---
 
