@@ -85,7 +85,7 @@ describe("threadReducer", () => {
         hasCustomName: false,
       },
     );
-    expect(next.threadsByWorkspace["ws-1"]?.[0]?.name).toBe("Hello there");
+    expect(next.threadsByWorkspace["ws-1"]?.[0]?.name).toBe("Hello ther");
     const items = next.itemsByThread["thread-1"] ?? [];
     expect(items).toHaveLength(1);
     if (items[0]?.kind === "message") {

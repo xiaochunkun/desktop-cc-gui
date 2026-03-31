@@ -84,6 +84,10 @@ describe("useThreadActions", () => {
     vi.mocked(renameThreadTitleKey).mockResolvedValue(undefined);
     vi.mocked(setThreadTitle).mockResolvedValue("title");
     vi.mocked(connectWorkspace).mockResolvedValue(undefined);
+    vi.mocked(previewThreadName).mockImplementation((text: string, fallback: string) => {
+      const trimmed = text.trim();
+      return trimmed || fallback;
+    });
     vi.mocked(deleteClaudeSession).mockResolvedValue(undefined);
     vi.mocked(deleteGeminiSession).mockResolvedValue(undefined);
     vi.mocked(deleteOpenCodeSession).mockResolvedValue({

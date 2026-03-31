@@ -8,7 +8,12 @@ import type {
   ThreadTokenUsage,
   TurnPlan,
 } from "../../../types";
-import { normalizeItem, prepareThreadItems, upsertItem } from "../../../utils/threadItems";
+import {
+  normalizeItem,
+  prepareThreadItems,
+  previewThreadName,
+  upsertItem,
+} from "../../../utils/threadItems";
 import { settlePlanInProgressSteps } from "../utils/threadNormalize";
 import {
   isIncrementalDerivationEnabled,
@@ -58,7 +63,7 @@ function extractRenameText(text: string) {
   }
   const withoutImages = text.replace(/\[image(?: x\d+)?\]/gi, " ");
   const withoutSkills = withoutImages.replace(/(^|\s)\$[A-Za-z0-9_-]+(?=\s|$)/g, " ");
-  return withoutSkills.replace(/\s+/g, " ").trim();
+  return previewThreadName(withoutSkills, "");
 }
 
 const OPTIMISTIC_USER_ITEM_PREFIX = "optimistic-user-";

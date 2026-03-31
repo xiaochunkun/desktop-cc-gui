@@ -372,10 +372,18 @@ function buildUserMessageItem(payload: Record<string, unknown>, fallbackId: stri
   if (!text) {
     return null;
   }
+  const selectedAgentName = asString(
+    payload.selectedAgentName ?? payload.selected_agent_name ?? "",
+  ).trim();
+  const selectedAgentIcon = asString(
+    payload.selectedAgentIcon ?? payload.selected_agent_icon ?? "",
+  ).trim();
   return buildConversationItem({
     id: fallbackId,
     type: "userMessage",
     content: [{ type: "text", text }],
+    ...(selectedAgentName ? { selectedAgentName } : {}),
+    ...(selectedAgentIcon ? { selectedAgentIcon } : {}),
   });
 }
 

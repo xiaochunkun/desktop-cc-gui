@@ -80,6 +80,7 @@ type SendMessageOptions = {
 const SPEC_ROOT_PRIORITY_MARKER = "[Spec Root Priority]";
 const SPEC_ROOT_SESSION_MARKER = "[Session Spec Link]";
 const AGENT_PROMPT_HEADER = "## Agent Role and Instructions";
+const AGENT_PROMPT_NAME_PREFIX = "Agent Name:";
 
 type SessionSpecLinkSource = "custom" | "default";
 type SessionSpecProbeStatus = "visible" | "invalid" | "permissionDenied" | "malformed";
@@ -708,9 +709,17 @@ export function useThreadMessaging({
           ? resolveAgentIconForAgent(resolvedSelectedAgent, "codicon-hubot")
           : null;
       const selectedAgentPrompt = resolvedSelectedAgent?.prompt?.trim() || "";
+      const selectedAgentPromptSections: string[] = [];
+      if (selectedAgentName) {
+        selectedAgentPromptSections.push(`${AGENT_PROMPT_NAME_PREFIX} ${selectedAgentName}`);
+      }
       if (selectedAgentPrompt) {
+        selectedAgentPromptSections.push(selectedAgentPrompt);
+      }
+      const selectedAgentPromptBlock = selectedAgentPromptSections.join("\n\n").trim();
+      if (selectedAgentPromptBlock) {
         if (!finalText.includes(AGENT_PROMPT_HEADER)) {
-          finalText = `${finalText}\n\n${AGENT_PROMPT_HEADER}\n\n${selectedAgentPrompt}`;
+          finalText = `${finalText}\n\n${AGENT_PROMPT_HEADER}\n\n${selectedAgentPromptBlock}`;
         }
       }
       if (injectionResult.injectedCount > 0 && injectionResult.previewText) {

@@ -13,6 +13,7 @@ import {
   normalizeRateLimits,
   normalizeTokenUsage,
 } from "../utils/threadNormalize";
+import { previewThreadName } from "../../../utils/threadItems";
 import type { ThreadAction } from "./useThreadsReducer";
 
 /**
@@ -190,7 +191,7 @@ export function useThreadTurnEvents({
       if (!customName && !isAutoTitlePending(workspaceId, threadId)) {
         const preview = asString(thread.preview).trim();
         if (preview) {
-          const name = preview;
+          const name = previewThreadName(preview, `Agent ${threadId.slice(0, 4)}`);
           dispatch({ type: "setThreadName", workspaceId, threadId, name });
         }
       }

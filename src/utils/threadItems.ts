@@ -11,6 +11,14 @@ import {
 const MAX_ITEM_TEXT = 20000;
 const TOOL_OUTPUT_RECENT_ITEMS = 40;
 const NO_TRUNCATE_TOOL_TYPES = new Set(["fileChange", "commandExecution"]);
+const MAX_DEFAULT_THREAD_TITLE_CHARS = 10;
+const USER_INPUT_BLOCK_MARKER_REGEX = /\[User Input\]\s*/g;
+const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
+  /(?:\r?\n){2}##\s*Agent Role and Instructions\s*(?:\r?\n){2}([\s\S]*)$/;
+const AGENT_PROMPT_NAME_LINE_REGEX =
+  /^(?:agent\s*name|selected\s*agent|智能体(?:名称|标题)?|agent)\s*[:：]\s*(.+)$/i;
+const TITLE_INJECTED_LINE_PREFIX_REGEX =
+  /^\[(?:System|Session Spec Link|Spec Root Priority|Skill Prompt|Commons Prompt)\][^\n]*(?:\r?\n|$)/i;
 const EDIT_TOOL_TYPE_HINTS = new Set([
   "edit",
   "edit_file",
@@ -1601,11 +1609,17 @@ export function getThreadTimestamp(thread: Record<string, unknown>) {
 }
 
 export function previewThreadName(text: string, fallback: string) {
-  const trimmed = text.trim();
-  if (!trimmed) {
+  const strippedAgentPrompt = stripAgentPromptBlockFromTail(text);
+  const strippedModeFallback = stripModeFallbackBlock(strippedAgentPrompt);
+  const strippedMemory = stripInjectedProjectMemoryBlock(strippedModeFallback);
+  const extractedUserInput = extractLatestUserInputTextPreserveFormatting(strippedMemory);
+  const strippedInjectedPrefix = stripInjectedPrefixLines(extractedUserInput);
+  const collapsed = strippedInjectedPrefix.replace(/\s+/g, " ").trim();
+  if (!collapsed) {
     return fallback;
   }
-  return trimmed;
+  const clipped = clipByChars(collapsed, MAX_DEFAULT_THREAD_TITLE_CHARS).trim();
+  return clipped || fallback;
 }
 
 export function buildConversationItem(
@@ -1630,6 +1644,8 @@ export function buildConversationItem(
       item,
       fallbackCollaborationMode,
     );
+    const selectedAgentName = extractSelectedAgentNameFromUserMessageItem(item, text);
+    const selectedAgentIcon = extractSelectedAgentIconFromUserMessageItem(item);
     return {
       id,
       kind: "message",
@@ -1637,6 +1653,8 @@ export function buildConversationItem(
       text,
       images: images.length > 0 ? images : undefined,
       collaborationMode,
+      selectedAgentName,
+      selectedAgentIcon,
     };
   }
   if (type === "reasoning") {
@@ -2005,6 +2023,163 @@ function stripModeFallbackBlock(text: string) {
   return extracted || text;
 }
 
+function extractLatestUserInputTextPreserveFormatting(text: string): string {
+  const userInputMatches = [...text.matchAll(USER_INPUT_BLOCK_MARKER_REGEX)];
+  if (userInputMatches.length === 0) {
+    return text;
+  }
+  const lastMatch = userInputMatches[userInputMatches.length - 1];
+  const markerIndex = lastMatch.index ?? -1;
+  if (markerIndex < 0) {
+    return text;
+  }
+  const markerLength = lastMatch[0]?.length ?? 0;
+  const extractedRaw = text.slice(markerIndex + markerLength);
+  const extracted = extractedRaw.replace(/^\r?\n/, "").replace(/^ /, "");
+  return extracted.trim().length > 0 ? extracted : text;
+}
+
+function stripAgentPromptBlockFromTail(text: string): string {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match || typeof match.index !== "number" || match.index < 0) {
+    return text;
+  }
+  const baseText = text.slice(0, match.index).replace(/\s+$/, "");
+  return baseText || text;
+}
+
+function normalizeSelectedAgentName(value: unknown): string | null {
+  const text = asString(value).trim();
+  if (!text) {
+    return null;
+  }
+  const normalized = text.replace(/^#+\s*/, "").trim();
+  return normalized || null;
+}
+
+function extractAgentNameFromPromptLine(value: string | null): string | null {
+  const normalized = normalizeSelectedAgentName(value);
+  if (!normalized) {
+    return null;
+  }
+  const namedMatch = AGENT_PROMPT_NAME_LINE_REGEX.exec(normalized);
+  if (namedMatch?.[1]) {
+    return normalizeSelectedAgentName(namedMatch[1]);
+  }
+  const firstClause = normalized.split(/[,:，；;：。！？!?]/)[0]?.trim() ?? "";
+  if (firstClause && firstClause.length <= 24) {
+    return firstClause;
+  }
+  return null;
+}
+
+function extractSelectedAgentNameFromPromptText(text: string): string | null {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match) {
+    return null;
+  }
+  const tailText = match[1] ?? "";
+  if (!tailText.trim()) {
+    return null;
+  }
+  const firstLine =
+    tailText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? null;
+  return extractAgentNameFromPromptLine(firstLine);
+}
+
+function extractRawUserMessageTextCandidates(item: Record<string, unknown>): string[] {
+  const candidates: string[] = [];
+  const directText = asString(item.text);
+  if (directText.trim()) {
+    candidates.push(directText);
+  }
+  const content = Array.isArray(item.content) ? item.content : [];
+  for (const entry of content) {
+    const record = asRecord(entry);
+    if (!record) {
+      continue;
+    }
+    const text = asString(record.text ?? record.value ?? record.content ?? "");
+    if (text.trim()) {
+      candidates.push(text);
+    }
+  }
+  return candidates;
+}
+
+function extractSelectedAgentNameFromUserMessageItem(
+  item: Record<string, unknown>,
+  text: string,
+): string | null {
+  const metadata = asRecord(item.metadata);
+  const explicitNameCandidates: unknown[] = [
+    item.selectedAgentName,
+    item.selected_agent_name,
+    item.agentName,
+    item.agent_name,
+    asRecord(item.selectedAgent)?.name,
+    asRecord(item.selected_agent)?.name,
+    metadata?.selectedAgentName,
+    metadata?.selected_agent_name,
+    metadata?.agentName,
+    metadata?.agent_name,
+  ];
+  for (const candidate of explicitNameCandidates) {
+    const normalized = normalizeSelectedAgentName(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  const promptTextCandidates = [text, ...extractRawUserMessageTextCandidates(item)];
+  for (const candidate of promptTextCandidates) {
+    const extracted = extractSelectedAgentNameFromPromptText(candidate);
+    if (extracted) {
+      return extracted;
+    }
+  }
+  return null;
+}
+
+function extractSelectedAgentIconFromUserMessageItem(
+  item: Record<string, unknown>,
+): string | null {
+  const metadata = asRecord(item.metadata);
+  const explicitIconCandidates: unknown[] = [
+    item.selectedAgentIcon,
+    item.selected_agent_icon,
+    item.agentIcon,
+    item.agent_icon,
+    asRecord(item.selectedAgent)?.icon,
+    asRecord(item.selected_agent)?.icon,
+    metadata?.selectedAgentIcon,
+    metadata?.selected_agent_icon,
+    metadata?.agentIcon,
+    metadata?.agent_icon,
+  ];
+  for (const candidate of explicitIconCandidates) {
+    const normalized = asString(candidate).trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+function stripInjectedPrefixLines(text: string): string {
+  let normalized = text.trimStart();
+  while (TITLE_INJECTED_LINE_PREFIX_REGEX.test(normalized)) {
+    normalized = normalized.replace(TITLE_INJECTED_LINE_PREFIX_REGEX, "").trimStart();
+  }
+  return normalized;
+}
+
+function clipByChars(text: string, maxChars: number): string {
+  return Array.from(text).slice(0, maxChars).join("");
+}
+
 function parseUserInputs(inputs: Array<Record<string, unknown>>) {
   const textParts: string[] = [];
   const images: string[] = [];
@@ -2102,6 +2277,8 @@ export function buildConversationItemFromThreadItem(
       item,
       fallbackCollaborationMode,
     );
+    const selectedAgentName = extractSelectedAgentNameFromUserMessageItem(item, text);
+    const selectedAgentIcon = extractSelectedAgentIconFromUserMessageItem(item);
     return {
       id,
       kind: "message",
@@ -2109,6 +2286,8 @@ export function buildConversationItemFromThreadItem(
       text,
       images: images.length > 0 ? images : undefined,
       collaborationMode,
+      selectedAgentName,
+      selectedAgentIcon,
     };
   }
   if (type === "agentMessage") {

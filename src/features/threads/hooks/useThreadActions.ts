@@ -154,8 +154,7 @@ function mergeGeminiSessionSummaries(
       name:
         mappedTitles[id] ||
         getCustomName(workspaceId, id) ||
-        session.firstMessage ||
-        "Gemini Session",
+        previewThreadName(session.firstMessage, "Gemini Session"),
       updatedAt,
       engineSource: "gemini",
     };
@@ -1262,7 +1261,7 @@ export function useThreadActions({
             const name = customName
               ? customName
               : preview.length > 0
-                ? preview
+                ? previewThreadName(preview, fallbackName)
                 : fallbackName;
             const engineSource = engineById.get(id) ?? ("codex" as const);
             const sourceMeta = resolveThreadSourceMeta(thread);
@@ -1304,8 +1303,7 @@ export function useThreadActions({
                 name:
                   mappedTitles[id] ||
                   getCustomName(workspace.id, id) ||
-                  session.firstMessage ||
-                  "Claude Session",
+                  previewThreadName(session.firstMessage, "Claude Session"),
                 updatedAt,
                 engineSource: "claude",
               };
@@ -1340,8 +1338,7 @@ export function useThreadActions({
               name:
                 mappedTitles[id] ||
                 getCustomName(workspace.id, id) ||
-                session.title ||
-                "OpenCode Session",
+                previewThreadName(session.title, "OpenCode Session"),
               updatedAt,
               engineSource: "opencode",
             };
@@ -1586,7 +1583,7 @@ export function useThreadActions({
           const name = customName
             ? customName
             : preview.length > 0
-              ? preview
+              ? previewThreadName(preview, fallbackName)
               : fallbackName;
           additions.push({
             id,

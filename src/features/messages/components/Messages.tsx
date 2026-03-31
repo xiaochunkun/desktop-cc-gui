@@ -232,6 +232,8 @@ const MODE_FALLBACK_PREFIX_REGEX =
   /^(?:collaboration mode:\s*code\.|execution policy \(default mode\):|execution policy \(plan mode\):)/i;
 const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
   /(?:\r?\n){2}##\s*Agent Role and Instructions\s*(?:\r?\n){2}([\s\S]*)$/;
+const AGENT_PROMPT_NAME_LINE_REGEX =
+  /^(?:agent\s*name|selected\s*agent|智能体(?:名称|标题)?|agent)\s*[:：]\s*(.+)$/i;
 const MESSAGES_PERF_DEBUG_FLAG_KEY = "mossx.debug.messages.perf";
 const CLAUDE_HIDE_REASONING_MODULE_FLAG_KEY = "mossx.claude.hideReasoningModule";
 const CLAUDE_RENDER_DEBUG_FLAG_KEY = "mossx.debug.claude.render";
@@ -353,6 +355,22 @@ function isLikelyAgentDisplayName(value: string | null): boolean {
   return !/[。！？!?]/.test(value) && !/[,:，；;：]/.test(value);
 }
 
+function extractAgentNameFromPromptLine(value: string | null): string | null {
+  const normalized = normalizeSelectedAgentName(value);
+  if (!normalized) {
+    return null;
+  }
+  const namedMatch = AGENT_PROMPT_NAME_LINE_REGEX.exec(normalized);
+  if (namedMatch?.[1]) {
+    return normalizeSelectedAgentName(namedMatch[1]);
+  }
+  const firstClause = normalized.split(/[,:，；;：。！？!?]/)[0]?.trim() ?? "";
+  if (firstClause && firstClause.length <= 24) {
+    return firstClause;
+  }
+  return isLikelyAgentDisplayName(normalized) ? normalized : null;
+}
+
 function stripAgentPromptBlockFromUserText(
   text: string,
   fallbackAgentName: string | null,
@@ -369,7 +387,7 @@ function stripAgentPromptBlockFromUserText(
   if (!tailText.trim()) {
     return { text, selectedAgentName: null, hasInjectedAgentPromptBlock: false };
   }
-  const inferredAgentName = normalizeSelectedAgentName(
+  const inferredAgentName = extractAgentNameFromPromptLine(
     tailText
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -382,10 +400,7 @@ function stripAgentPromptBlockFromUserText(
   }
   return {
     text: baseText,
-    selectedAgentName:
-      fallbackAgentName || isLikelyAgentDisplayName(inferredAgentName)
-        ? agentName
-        : null,
+    selectedAgentName: agentName,
     hasInjectedAgentPromptBlock: true,
   };
 }

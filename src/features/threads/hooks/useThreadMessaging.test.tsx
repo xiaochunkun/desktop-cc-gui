@@ -1287,6 +1287,34 @@ describe("useThreadMessaging", () => {
     expect(optimisticAction.item?.selectedAgentIcon ?? null).toBeNull();
   });
 
+  it("injects selected agent name marker into codex prompt block", async () => {
+    const { result } = makeHook("codex");
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "thread-1",
+        "请继续",
+        [],
+        {
+          selectedAgent: {
+            id: "agent-backend-1",
+            name: "后端架构师",
+            prompt: "你是一位资深后端架构师，擅长服务治理和高并发设计。",
+          },
+        },
+      );
+    });
+
+    const calls = vi.mocked(sendUserMessage).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const latestCall = calls[calls.length - 1];
+    const sentText = String(latestCall?.[2] ?? "");
+    expect(sentText).toContain("## Agent Role and Instructions");
+    expect(sentText).toContain("Agent Name: 后端架构师");
+    expect(sentText).toContain("你是一位资深后端架构师，擅长服务治理和高并发设计。");
+  });
+
   it("releases codex processing state when first packet timeout is recoverable", async () => {
     vi.mocked(sendUserMessage).mockRejectedValueOnce(
       new Error(

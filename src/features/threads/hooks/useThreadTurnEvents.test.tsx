@@ -137,7 +137,7 @@ describe("useThreadTurnEvents", () => {
       type: "setThreadName",
       workspaceId: "ws-1",
       threadId: "thread-1",
-      name: "A brand new thread",
+      name: "A brand ne",
     });
     expect(recordThreadActivity).toHaveBeenCalledWith(
       "ws-1",

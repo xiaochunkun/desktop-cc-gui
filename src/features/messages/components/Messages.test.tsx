@@ -240,6 +240,38 @@ describe("Messages", () => {
     expect(container.querySelector(".message-agent-tag-text")).toBeNull();
   });
 
+  it("reads agent name from explicit Agent Name line in injected prompt block", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "msg-agent-header-with-name-line",
+        kind: "message",
+        role: "user",
+        text:
+          "请继续。\n\n## Agent Role and Instructions\n\nAgent Name: 后端架构师\n\n你是一位资深后端架构师，擅长服务治理和高并发设计。",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const userText = container.querySelector(".user-collapsible-text-content");
+    expect(userText?.textContent ?? "").toBe("请继续。");
+    const agentIconButton = container.querySelector(".message-agent-icon-button");
+    expect(agentIconButton).toBeTruthy();
+    if (agentIconButton) {
+      fireEvent.click(agentIconButton);
+    }
+    expect(container.querySelector(".message-agent-tag-text")?.textContent ?? "").toBe("后端架构师");
+  });
+
   it("shows selected agent tag for realtime/local user message metadata", () => {
     const items: ConversationItem[] = [
       {

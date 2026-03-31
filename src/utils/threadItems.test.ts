@@ -7,6 +7,7 @@ import {
   getThreadTimestamp,
   mergeThreadItems,
   normalizeItem,
+  previewThreadName,
   prepareThreadItems,
   upsertItem,
 } from "./threadItems";
@@ -88,6 +89,19 @@ describe("threadItems", () => {
     if (normalized.kind === "message") {
       expect(normalized.text).toBe("");
     }
+  });
+
+  it("uses only [User Input] content for default thread title", () => {
+    const source =
+      "[System] [Session Spec Link] source=custom; status=visible; root=/tmp/spec. " +
+      "[Spec Root Priority] Active external OpenSpec root: /tmp/spec. " +
+      "When checking spec visibility, prioritize this root.\n" +
+      "[User Input] 工作区代码做一下兼容性测试,在更新一下提案";
+    expect(previewThreadName(source, "Agent 1")).toBe("工作区代码做一下兼容");
+  });
+
+  it("truncates default thread title to 10 characters", () => {
+    expect(previewThreadName("123456789012345", "Agent 1")).toBe("1234567890");
   });
 
   it("filters out assistant placeholder messages after normalization", () => {
@@ -1483,6 +1497,44 @@ go lang`,
       expect(item.role).toBe("user");
       expect(item.text).toBe("Please $Review");
       expect(item.images).toEqual(["https://example.com/image.png"]);
+    }
+  });
+
+  it("derives selected agent metadata from explicit Agent Name line in prompt block", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-agent-name-line-1",
+      content: [
+        {
+          type: "text",
+          text:
+            "请继续优化。\n\n## Agent Role and Instructions\n\nAgent Name: 后端架构师\n\n你是一位资深后端架构师，擅长服务治理和高并发设计。",
+        },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.selectedAgentName).toBe("后端架构师");
+    }
+  });
+
+  it("derives selected agent name from the first prompt clause when metadata is missing", () => {
+    const item = buildConversationItemFromThreadItem({
+      type: "userMessage",
+      id: "msg-agent-clause-1",
+      content: [
+        {
+          type: "text",
+          text:
+            "请继续优化。\n\n## Agent Role and Instructions\n\n你是一位资深的桌面软件架构师，专精于 Tauri v2 生态。",
+        },
+      ],
+    });
+    expect(item).not.toBeNull();
+    if (item && item.kind === "message") {
+      expect(item.role).toBe("user");
+      expect(item.selectedAgentName).toBe("你是一位资深的桌面软件架构师");
     }
   });
 
