@@ -349,6 +349,7 @@ export function useAppShellSections(ctx: any) {
               id: selectedAgentForSend.id,
               name: selectedAgentForSend.name,
               prompt: selectedAgentForSend.prompt ?? null,
+              icon: selectedAgentForSend.icon ?? null,
             }
           : null,
       };

@@ -212,6 +212,17 @@
   width: 16px;
 }
 
+.selector-option-agent-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.selector-option-agent-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
 .selector-option .check-mark {
   margin-left: auto;
   font-size: 12px;

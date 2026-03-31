@@ -54,6 +54,7 @@ import type { ThreadAction, ThreadState } from "./useThreadsReducer";
 import { useReviewPrompt } from "./useReviewPrompt";
 import { formatRelativeTime } from "../../../utils/time";
 import { pushErrorToast } from "../../../services/toasts";
+import { resolveAgentIconForAgent } from "../../../utils/agentIcons";
 import { normalizeSpecRootInput } from "../../spec/pathUtils";
 import { isValidModelId } from "../../composer/types/provider";
 
@@ -69,6 +70,7 @@ type SendMessageOptions = {
     id: string;
     name: string;
     prompt?: string | null;
+    icon?: string | null;
   } | null;
 };
 
@@ -698,6 +700,10 @@ export function useThreadMessaging({
         resolvedEngine !== "opencode"
           ? resolvedSelectedAgent?.name?.trim() || null
           : null;
+      const selectedAgentIcon =
+        resolvedEngine !== "opencode" && resolvedSelectedAgent
+          ? resolveAgentIconForAgent(resolvedSelectedAgent, "codicon-hubot")
+          : null;
       const selectedAgentPrompt = resolvedSelectedAgent?.prompt?.trim() || "";
       if (selectedAgentPrompt) {
         if (!finalText.includes(AGENT_PROMPT_HEADER)) {
@@ -912,6 +918,7 @@ export function useThreadMessaging({
               images: images.length > 0 ? images : undefined,
               collaborationMode: userCollaborationMode,
               selectedAgentName,
+              selectedAgentIcon,
             },
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });
@@ -1086,6 +1093,7 @@ export function useThreadMessaging({
               images: images.length > 0 ? images : undefined,
               collaborationMode: userCollaborationMode,
               selectedAgentName,
+              selectedAgentIcon,
             },
             hasCustomName: Boolean(getCustomName(workspace.id, threadId)),
           });

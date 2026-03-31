@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useMemo, useState, useEffect, memo } from '
 import { useTranslation } from 'react-i18next';
 import Crosshair from 'lucide-react/dist/esm/icons/crosshair';
 import ListCollapse from 'lucide-react/dist/esm/icons/list-collapse';
+import { AgentIcon } from '../../../../components/AgentIcon';
 import { getFileIcon } from '../../utils/fileIcons';
 import { TokenIndicator } from './TokenIndicator';
 import type {
@@ -458,9 +459,12 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
           data-tooltip={selectedAgent.name}
           style={{ cursor: 'default' }}
         >
-          <span 
-            className="codicon codicon-robot" 
-            style={{ marginRight: 4 }}
+          <AgentIcon
+            icon={selectedAgent.icon}
+            seed={selectedAgent.id || selectedAgent.name}
+            fallback="codicon-robot"
+            className="context-agent-icon"
+            size={14}
           />
           <span className="context-text">
             <span dir="ltr">

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Switch } from 'antd';
 import { Claude, Gemini } from '@lobehub/icons';
+import { AgentIcon } from '../../../../../components/AgentIcon';
 import openaiColorIcon from '../../../../../assets/model-icons/openai.svg';
 import { AVAILABLE_PROVIDERS } from '../types';
 import { agentProvider, CREATE_NEW_AGENT_ID, EMPTY_STATE_ID, type AgentItem } from '../providers/agentProvider';
@@ -368,12 +369,29 @@ export const ConfigSelect = ({
                   return;
                 }
 
-                onAgentSelect?.({ id: agent.id, name: agent.name, prompt: agent.prompt });
+                onAgentSelect?.({
+                  id: agent.id,
+                  name: agent.name,
+                  prompt: agent.prompt,
+                  icon: agent.icon,
+                });
                 setIsOpen(false);
                 setActiveSubmenu('none');
               }}
             >
-              <span className={`codicon ${isCreate ? 'codicon-add' : isInfo ? 'codicon-info' : 'codicon-robot'}`} />
+              {isCreate ? (
+                <span className="codicon codicon-add" />
+              ) : isInfo ? (
+                <span className="codicon codicon-info" />
+              ) : (
+                <AgentIcon
+                  icon={agent.icon}
+                  seed={agent.id || agent.name}
+                  fallback="codicon-robot"
+                  className="selector-option-agent-icon"
+                  size={16}
+                />
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: 1 }}>
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{agent.name}</span>
                 {agent.prompt ? (
@@ -585,7 +603,13 @@ export const ConfigSelect = ({
             onMouseLeave={() => setActiveSubmenu('none')}
             style={{ position: 'relative' }}
           >
-            <span className="codicon codicon-robot" />
+            <AgentIcon
+              icon={selectedAgent?.icon}
+              seed={selectedAgent?.id || selectedAgent?.name}
+              fallback="codicon-robot"
+              className="selector-option-agent-icon"
+              size={16}
+            />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span>{t('settings.agent.title')}</span>
               {selectedAgent?.name ? (

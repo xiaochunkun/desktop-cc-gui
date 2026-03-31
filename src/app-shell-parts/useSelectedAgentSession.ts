@@ -3,6 +3,7 @@ import type { MutableRefObject } from "react";
 import { getClientStoreSync, writeClientStoreValue } from "../services/clientStorage";
 import { listAgentConfigs } from "../services/tauri";
 import type { DebugEntry, SelectedAgentOption } from "../types";
+import { resolveAgentIconForAgent } from "../utils/agentIcons";
 import {
   shouldApplyDraftAgentToThread,
   shouldMigrateSelectedAgentBetweenThreadIds,
@@ -26,10 +27,12 @@ function normalizeSelectedAgentOption(value: unknown): SelectedAgentOption | nul
       : record.prompt == null
         ? null
         : String(record.prompt);
+  const icon = resolveAgentIconForAgent({ id, name, icon: record.icon });
   return {
     id,
     name,
     prompt: prompt && prompt.trim().length > 0 ? prompt : null,
+    icon,
   };
 }
 
@@ -126,6 +129,7 @@ export function useSelectedAgentSession({
           id: config.id,
           name: config.name,
           prompt: config.prompt ?? null,
+          icon: config.icon ?? null,
         });
         if (normalized) {
           nextCatalog[normalized.id] = normalized;
@@ -231,7 +235,8 @@ export function useSelectedAgentSession({
       resolved
       && (!candidate
         || candidate.name !== resolved.name
-        || (candidate.prompt ?? null) !== (resolved.prompt ?? null))
+        || (candidate.prompt ?? null) !== (resolved.prompt ?? null)
+        || (candidate.icon ?? null) !== (resolved.icon ?? null))
     ) {
       setSelectedAgentBySessionKey((prev) => ({
         ...prev,

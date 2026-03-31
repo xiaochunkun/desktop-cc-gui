@@ -199,6 +199,7 @@ export interface SelectedAgent {
   id: string;
   name: string;
   prompt?: string;
+  icon?: string;
 }
 
 /**

@@ -211,6 +211,34 @@ describe("Messages", () => {
     expect(container.textContent ?? "").not.toContain("你是一个专注前端体验的专家");
   });
 
+  it("does not strip user-authored agent header block when no reliable agent name is present", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "msg-agent-header-user-authored",
+        kind: "message",
+        role: "user",
+        text:
+          "这是一段用户原始内容。\n\n## Agent Role and Instructions\n\n擅长前后端桌面全局架构和编码,具备谨慎和创造性",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const userText = container.querySelector(".user-collapsible-text-content");
+    expect(userText?.textContent ?? "").toContain("Agent Role and Instructions");
+    expect(userText?.textContent ?? "").toContain("擅长前后端桌面全局架构和编码");
+    expect(container.querySelector(".message-agent-icon-button")).toBeNull();
+  });
+
   it("shows selected agent tag for realtime/local user message metadata", () => {
     const items: ConversationItem[] = [
       {
@@ -219,6 +247,7 @@ describe("Messages", () => {
         role: "user",
         text: "继续执行",
         selectedAgentName: "后端架构师",
+        selectedAgentIcon: "agent-robot-03",
       },
     ];
 
@@ -243,6 +272,47 @@ describe("Messages", () => {
       fireEvent.click(agentIconButton);
     }
     expect(container.querySelector(".message-agent-tag-text")?.textContent ?? "").toBe("后端架构师");
+    expect(agentIconButton?.querySelector(".agent-icon-svg")).toBeTruthy();
+  });
+
+  it("derives stable icon from agent name when legacy metadata has no icon", () => {
+    const items: ConversationItem[] = [
+      {
+        id: "msg-agent-legacy-1",
+        kind: "message",
+        role: "user",
+        text: "你好你是架构师吗",
+        selectedAgentName: "java架构师",
+      },
+      {
+        id: "msg-agent-legacy-2",
+        kind: "message",
+        role: "user",
+        text: "收到",
+        selectedAgentName: "前端专家",
+      },
+    ];
+
+    const { container } = render(
+      <Messages
+        items={items}
+        threadId="thread-1"
+        workspaceId="ws-1"
+        isThinking={false}
+        openTargets={[]}
+        selectedOpenAppId=""
+      />,
+    );
+
+    const iconButtons = Array.from(
+      container.querySelectorAll(".message-agent-icon-button"),
+    ) as HTMLButtonElement[];
+    expect(iconButtons).toHaveLength(2);
+    const firstMarkup = iconButtons[0]?.querySelector(".agent-icon-svg")?.innerHTML ?? "";
+    const secondMarkup = iconButtons[1]?.querySelector(".agent-icon-svg")?.innerHTML ?? "";
+    expect(firstMarkup.length).toBeGreaterThan(0);
+    expect(secondMarkup.length).toBeGreaterThan(0);
+    expect(firstMarkup).not.toBe(secondMarkup);
   });
 
   it("preserves multiline formatting when extracting [User Input] content", () => {

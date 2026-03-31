@@ -285,6 +285,190 @@ describe("threadReducer", () => {
     ]);
   });
 
+  it("preserves selected agent metadata when snapshot user message lacks it", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "你好你是架构师吗",
+            selectedAgentName: "java架构师",
+            selectedAgentIcon: "agent-robot-02",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "你好你是架构师吗",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "你好你是架构师吗",
+        selectedAgentName: "java架构师",
+        selectedAgentIcon: "agent-robot-02",
+      },
+    ]);
+  });
+
+  it("preserves per-message selected agent metadata order for duplicate user texts", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "前端专家",
+            selectedAgentIcon: "agent-robot-01",
+          },
+          {
+            id: "user-local-2",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "后端架构师",
+            selectedAgentIcon: "agent-robot-03",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-2",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "收到",
+        selectedAgentName: "前端专家",
+        selectedAgentIcon: "agent-robot-01",
+      },
+      {
+        id: "user-remote-2",
+        kind: "message",
+        role: "user",
+        text: "收到",
+        selectedAgentName: "后端架构师",
+        selectedAgentIcon: "agent-robot-03",
+      },
+    ]);
+  });
+
+  it("does not hydrate duplicate user metadata when snapshot user sequence drifts", () => {
+    const base: ThreadState = {
+      ...initialState,
+      itemsByThread: {
+        "thread-1": [
+          {
+            id: "user-local-1",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "前端专家",
+            selectedAgentIcon: "agent-robot-01",
+          },
+          {
+            id: "user-local-2",
+            kind: "message",
+            role: "user",
+            text: "执行",
+          },
+          {
+            id: "user-local-3",
+            kind: "message",
+            role: "user",
+            text: "收到",
+            selectedAgentName: "后端架构师",
+            selectedAgentIcon: "agent-robot-03",
+          },
+        ],
+      },
+    };
+
+    const next = threadReducer(base, {
+      type: "setThreadItems",
+      threadId: "thread-1",
+      items: [
+        {
+          id: "user-remote-1",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-2",
+          kind: "message",
+          role: "user",
+          text: "收到",
+        },
+        {
+          id: "user-remote-3",
+          kind: "message",
+          role: "user",
+          text: "执行",
+        },
+      ],
+    });
+
+    expect(next.itemsByThread["thread-1"]).toEqual([
+      {
+        id: "user-remote-1",
+        kind: "message",
+        role: "user",
+        text: "收到",
+      },
+      {
+        id: "user-remote-2",
+        kind: "message",
+        role: "user",
+        text: "收到",
+      },
+      {
+        id: "user-remote-3",
+        kind: "message",
+        role: "user",
+        text: "执行",
+      },
+    ]);
+  });
+
   it("preserves local requestUserInputSubmitted record while thread is processing", () => {
     const base: ThreadState = {
       ...initialState,

@@ -8,6 +8,7 @@ import ChevronUp from "lucide-react/dist/esm/icons/chevron-up";
 import Copy from "lucide-react/dist/esm/icons/copy";
 import Terminal from "lucide-react/dist/esm/icons/terminal";
 import X from "lucide-react/dist/esm/icons/x";
+import { AgentIcon } from "../../../components/AgentIcon";
 import { ProxyStatusBadge } from "../../../components/ProxyStatusBadge";
 import type {
   ConversationItem,
@@ -49,6 +50,7 @@ import {
   readLocalBooleanFlag,
   writeLocalBooleanFlag,
 } from "../constants/liveCanvasControls";
+import { normalizeAgentIcon } from "../../../utils/agentIcons";
 
 
 type MessagesProps = {
@@ -179,6 +181,7 @@ function areMessageItemsEqual(
       previous.role === next.role &&
       previous.text === next.text &&
       previous.selectedAgentName === next.selectedAgentName &&
+      previous.selectedAgentIcon === next.selectedAgentIcon &&
       areMessageImagesEqual(previous.images, next.images)
     )
   );
@@ -227,7 +230,8 @@ const PROJECT_MEMORY_XML_PREFIX_REGEX =
 const MODE_FALLBACK_MARKER_REGEX = /User request\s*:\s*/i;
 const MODE_FALLBACK_PREFIX_REGEX =
   /^(?:collaboration mode:\s*code\.|execution policy \(default mode\):|execution policy \(plan mode\):)/i;
-const AGENT_PROMPT_HEADER_LINE_REGEX = /^##\s*Agent Role and Instructions\s*$/im;
+const AGENT_PROMPT_BLOCK_AT_TAIL_REGEX =
+  /(?:\r?\n){2}##\s*Agent Role and Instructions\s*(?:\r?\n){2}([\s\S]*)$/;
 const MESSAGES_PERF_DEBUG_FLAG_KEY = "mossx.debug.messages.perf";
 const CLAUDE_HIDE_REASONING_MODULE_FLAG_KEY = "mossx.claude.hideReasoningModule";
 const CLAUDE_RENDER_DEBUG_FLAG_KEY = "mossx.debug.claude.render";
@@ -335,26 +339,48 @@ function normalizeSelectedAgentName(value: string | null | undefined): string | 
   return normalized || null;
 }
 
+function normalizeSelectedAgentIcon(value: string | null | undefined): string | null {
+  return normalizeAgentIcon(value);
+}
+
+function isLikelyAgentDisplayName(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  if (value.length > 24) {
+    return false;
+  }
+  return !/[。！？!?,，；;：:]/.test(value);
+}
+
 function stripAgentPromptBlockFromUserText(
   text: string,
+  fallbackAgentName: string | null,
 ): { text: string; selectedAgentName: string | null } {
-  const match = AGENT_PROMPT_HEADER_LINE_REGEX.exec(text);
-  if (!match || typeof match.index !== "number" || match.index <= 0) {
+  const match = AGENT_PROMPT_BLOCK_AT_TAIL_REGEX.exec(text);
+  if (!match || typeof match.index !== "number" || match.index < 0) {
     return { text, selectedAgentName: null };
   }
-  const tailStart = match.index + match[0].length;
-  const tailText = text.slice(tailStart);
+  const tailText = match[1] ?? "";
   if (!tailText.trim()) {
     return { text, selectedAgentName: null };
   }
-  const agentName = normalizeSelectedAgentName(
+  const inferredAgentName = normalizeSelectedAgentName(
     tailText
       .split(/\r?\n/)
       .map((line) => line.trim())
       .find((line) => line.length > 0) ?? null,
   );
+  const agentName = fallbackAgentName ?? inferredAgentName;
+  if (!agentName || (!fallbackAgentName && !isLikelyAgentDisplayName(inferredAgentName))) {
+    return { text, selectedAgentName: null };
+  }
+  const baseText = text.slice(0, match.index).replace(/\s+$/, "");
+  if (!baseText) {
+    return { text, selectedAgentName: null };
+  }
   return {
-    text: text.slice(0, match.index).replace(/\s+$/, ""),
+    text: baseText,
     selectedAgentName: agentName,
   };
 }
@@ -1422,9 +1448,14 @@ const MessageRow = memo(function MessageRow({
       return {
         displayText: memorySummary ? "" : originalText,
         selectedAgentName: null,
+        selectedAgentIcon: null,
       };
     }
-    const strippedAgentPrompt = stripAgentPromptBlockFromUserText(originalText);
+    const normalizedSelectedAgentName = normalizeSelectedAgentName(item.selectedAgentName);
+    const strippedAgentPrompt = stripAgentPromptBlockFromUserText(
+      originalText,
+      normalizedSelectedAgentName,
+    );
     const safeText = enableCollaborationBadge
       ? extractModeFallbackUserInput(strippedAgentPrompt.text).text
       : strippedAgentPrompt.text;
@@ -1433,11 +1464,13 @@ const MessageRow = memo(function MessageRow({
       displayText: extractLatestUserInputTextPreserveFormatting(filteredCommandText),
       selectedAgentName:
         strippedAgentPrompt.selectedAgentName
-        ?? normalizeSelectedAgentName(item.selectedAgentName),
+        ?? normalizedSelectedAgentName,
+      selectedAgentIcon: normalizeSelectedAgentIcon(item.selectedAgentIcon),
     };
   }, [
     enableCollaborationBadge,
     item.role,
+    item.selectedAgentIcon,
     item.selectedAgentName,
     item.text,
     legacyUserMemory?.remainingText,
@@ -1445,10 +1478,11 @@ const MessageRow = memo(function MessageRow({
   ]);
   const displayText = userMessagePresentation.displayText;
   const selectedAgentName = userMessagePresentation.selectedAgentName;
+  const selectedAgentIcon = userMessagePresentation.selectedAgentIcon;
   const hasExternalAgentBadge = item.role === "user" && Boolean(selectedAgentName);
   useEffect(() => {
     setIsAgentBadgeExpanded(false);
-  }, [item.id, selectedAgentName]);
+  }, [item.id, selectedAgentIcon, selectedAgentName]);
   const handleToggleAgentBadge = useCallback(() => {
     setIsAgentBadgeExpanded((current) => !current);
   }, []);
@@ -1568,7 +1602,13 @@ const MessageRow = memo(function MessageRow({
         aria-label={selectedAgentName ? `显示智能体标签：${selectedAgentName}` : "显示智能体标签"}
         title={selectedAgentName ?? undefined}
       >
-        <span className="codicon codicon-hubot" aria-hidden />
+        <AgentIcon
+          icon={selectedAgentIcon}
+          seed={selectedAgentName}
+          fallback="codicon-hubot"
+          className="message-agent-icon-glyph"
+          size={30}
+        />
       </button>
       {isAgentBadgeExpanded && selectedAgentName && (
         <div className="message-agent-reveal is-visible" role="status">

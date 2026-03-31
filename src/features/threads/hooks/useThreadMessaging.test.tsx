@@ -1121,6 +1121,32 @@ describe("useThreadMessaging", () => {
     expect(optimisticAction.item?.id).toMatch(/^optimistic-user-/);
   });
 
+  it("does not attach selectedAgentIcon when sending without selected agent", async () => {
+    const dispatch = vi.fn();
+    const { result } = makeHook("codex", { dispatch });
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(workspace, "thread-1", "hello codex");
+    });
+
+    const optimisticCall = dispatch.mock.calls.find(
+      ([action]) =>
+        action &&
+        typeof action === "object" &&
+        "type" in action &&
+        (action as { type?: string }).type === "upsertItem" &&
+        "item" in action &&
+        (action as { item?: { kind?: string; role?: string } }).item?.kind === "message" &&
+        (action as { item?: { kind?: string; role?: string } }).item?.role === "user",
+    );
+    expect(optimisticCall).toBeDefined();
+    const optimisticAction = optimisticCall?.[0] as {
+      item?: { selectedAgentName?: string | null; selectedAgentIcon?: string | null };
+    };
+    expect(optimisticAction.item?.selectedAgentName ?? null).toBeNull();
+    expect(optimisticAction.item?.selectedAgentIcon ?? null).toBeNull();
+  });
+
   it("releases codex processing state when first packet timeout is recoverable", async () => {
     vi.mocked(sendUserMessage).mockRejectedValueOnce(
       new Error(

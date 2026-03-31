@@ -149,7 +149,84 @@ function mergeThreadItemsPreservingOptimisticUsers(
   incomingItems: ConversationItem[],
   isProcessing: boolean,
 ) {
-  let mergedItems = incomingItems;
+  const hasSelectedAgentName = (value: unknown) =>
+    typeof value === "string" && value.trim().length > 0;
+  const hasSelectedAgentIcon = (value: unknown) =>
+    typeof value === "string" && value.trim().length > 0;
+  const hasSelectedAgentMetadata = (item: UserMessageItem) =>
+    hasSelectedAgentName(item.selectedAgentName) ||
+    hasSelectedAgentIcon(item.selectedAgentIcon);
+  const toComparableUserMessageKey = (item: UserMessageItem) => {
+    const text = normalizeComparableUserText(item.text);
+    const images = normalizeUserImages(item.images).join("\u0001");
+    return `${text}\u0000${images}`;
+  };
+  const toComparableUserMessageSequence = (items: ConversationItem[]) =>
+    items
+      .filter(isUserMessageItem)
+      .map((item) => toComparableUserMessageKey(item));
+  const areSameSequence = (left: string[], right: string[]) => {
+    if (left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) => value === right[index]);
+  };
+  const localUserSequence = toComparableUserMessageSequence(localItems);
+  const incomingUserSequence = toComparableUserMessageSequence(incomingItems);
+  const hasUserSequenceDrift = !areSameSequence(localUserSequence, incomingUserSequence);
+  const localUserMessageMetadataBuckets = new Map<
+    string,
+    Array<Pick<UserMessageItem, "selectedAgentName" | "selectedAgentIcon">>
+  >();
+  for (const item of localItems) {
+    if (!isUserMessageItem(item) || !hasSelectedAgentMetadata(item)) {
+      continue;
+    }
+    const key = toComparableUserMessageKey(item);
+    const bucket = localUserMessageMetadataBuckets.get(key) ?? [];
+    bucket.push({
+      selectedAgentName: item.selectedAgentName ?? null,
+      selectedAgentIcon: item.selectedAgentIcon ?? null,
+    });
+    localUserMessageMetadataBuckets.set(key, bucket);
+  }
+
+  let mergedItems = incomingItems.map((item) => {
+    if (!isUserMessageItem(item)) {
+      return item;
+    }
+    const key = toComparableUserMessageKey(item);
+    const bucket = localUserMessageMetadataBuckets.get(key);
+    if (!bucket || bucket.length === 0) {
+      return item;
+    }
+    if (hasUserSequenceDrift && bucket.length > 1) {
+      return item;
+    }
+    const matchedLocalMetadata = bucket.shift();
+    if (!matchedLocalMetadata) {
+      return item;
+    }
+    if (bucket.length === 0) {
+      localUserMessageMetadataBuckets.delete(key);
+    } else {
+      localUserMessageMetadataBuckets.set(key, bucket);
+    }
+    const incomingHasName = hasSelectedAgentName(item.selectedAgentName);
+    const incomingHasIcon = hasSelectedAgentIcon(item.selectedAgentIcon);
+    if (incomingHasName && incomingHasIcon) {
+      return item;
+    }
+    return {
+      ...item,
+      selectedAgentName: incomingHasName
+        ? item.selectedAgentName
+        : matchedLocalMetadata.selectedAgentName,
+      selectedAgentIcon: incomingHasIcon
+        ? item.selectedAgentIcon
+        : matchedLocalMetadata.selectedAgentIcon,
+    };
+  });
 
   if (isProcessing && localItems.length > 0) {
     const trailingOptimisticUsers: UserMessageItem[] = [];

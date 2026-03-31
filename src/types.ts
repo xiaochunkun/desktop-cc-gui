@@ -84,6 +84,7 @@ export type ConversationItem =
       images?: string[];
       collaborationMode?: "plan" | "code" | null;
       selectedAgentName?: string | null;
+      selectedAgentIcon?: string | null;
     }
   | { id: string; kind: "reasoning"; summary: string; content: string }
   | { id: string; kind: "diff"; title: string; diff: string; status?: string }
@@ -745,12 +746,14 @@ export type SelectedAgentOption = {
   id: string;
   name: string;
   prompt?: string | null;
+  icon?: string | null;
 };
 
 export type AgentConfig = {
   id: string;
   name: string;
   prompt?: string | null;
+  icon?: string | null;
   createdAt?: number | null;
 };
 

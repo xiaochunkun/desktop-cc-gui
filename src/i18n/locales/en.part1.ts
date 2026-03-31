@@ -1143,6 +1143,10 @@ const enPart1 = {
         name: "Name",
         namePlaceholder: "Enter agent name",
         nameInvalid: "Name length must be between 1 and 20 characters",
+        icon: "Icon",
+        iconGroupMasculine: "Humanoid Robots · Male",
+        iconGroupFeminine: "Humanoid Robots · Female",
+        iconGroupNeutral: "Humanoid Robots · Neutral",
         prompt: "Prompt",
         promptPlaceholder:
           "Enter role, tone, workflow, tool preferences and rules (optional)",

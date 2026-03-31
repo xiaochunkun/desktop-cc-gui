@@ -2529,7 +2529,7 @@ export async function addAgentConfig(agent: AgentConfig): Promise<void> {
 
 export async function updateAgentConfig(
   id: string,
-  updates: Partial<Pick<AgentConfig, "name" | "prompt">>,
+  updates: Partial<Pick<AgentConfig, "name" | "prompt" | "icon">>,
 ): Promise<void> {
   return invoke("agent_update", { id, updates });
 }
