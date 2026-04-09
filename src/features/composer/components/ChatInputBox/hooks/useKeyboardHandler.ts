@@ -11,6 +11,19 @@ interface InlineCompletionHandler {
   applySuggestion: () => boolean;
 }
 
+function isPromptEnhancerShortcut(event: Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+    return false;
+  }
+
+  return (
+    event.code === 'Slash' ||
+    event.code === 'NumpadDivide' ||
+    event.key === '/' ||
+    event.key === '?'
+  );
+}
+
 export interface UseKeyboardHandlerOptions {
   editableRef: MutableRefObject<HTMLDivElement | null>;
   isComposingRef: MutableRefObject<boolean>;
@@ -42,6 +55,7 @@ export interface UseKeyboardHandlerOptions {
   completionSelectedRef: MutableRefObject<boolean>;
   submittedOnEnterRef: MutableRefObject<boolean>;
   handleSubmit: () => void;
+  handleEnhancePrompt?: () => void;
 }
 
 /**
@@ -75,6 +89,7 @@ export function useKeyboardHandler({
   completionSelectedRef,
   submittedOnEnterRef,
   handleSubmit,
+  handleEnhancePrompt,
 }: UseKeyboardHandlerOptions) {
   const onKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -84,6 +99,13 @@ export function useKeyboardHandler({
         e.key === 'Enter' || e.nativeEvent.keyCode === 13;
 
       if (handleMacCursorMovement(e)) return;
+
+      if (handleEnhancePrompt && isPromptEnhancerShortcut(e.nativeEvent)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleEnhancePrompt();
+        return;
+      }
 
       const isCursorMovementKey =
         e.key === 'Home' ||
@@ -216,6 +238,7 @@ export function useKeyboardHandler({
       submittedOnEnterRef,
       completionSelectedRef,
       handleSubmit,
+      handleEnhancePrompt,
     ]
   );
 

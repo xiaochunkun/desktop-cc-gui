@@ -28,11 +28,13 @@ function createComposingBeforeInputEvent(inputType: string): Event {
 function Harness({
   sendShortcut,
   onSubmit,
+  onEnhancePrompt = () => {},
   isComposing = false,
   compositionEndedMsAgo,
 }: {
   sendShortcut: 'enter' | 'cmdEnter';
   onSubmit: () => void;
+  onEnhancePrompt?: () => void;
   isComposing?: boolean;
   compositionEndedMsAgo?: number;
 }) {
@@ -59,7 +61,7 @@ function Harness({
     completionSelectedRef,
     submittedOnEnterRef,
     handleSubmit: onSubmit,
-    handleEnhancePrompt: () => {},
+    handleEnhancePrompt: onEnhancePrompt,
   });
 
   return <div ref={editableRef} data-testid="editable" tabIndex={0} />;
@@ -128,5 +130,41 @@ describe('useNativeEventCapture', () => {
     editable.dispatchEvent(createComposingBeforeInputEvent('insertParagraph'));
 
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('triggers enhancer on Cmd+/', () => {
+    const onEnhancePrompt = vi.fn();
+    render(<Harness sendShortcut="enter" onSubmit={vi.fn()} onEnhancePrompt={onEnhancePrompt} />);
+    const editable = screen.getByTestId('editable');
+
+    editable.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: '/',
+        code: 'Slash',
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(onEnhancePrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers enhancer on Ctrl+/ for Windows', () => {
+    const onEnhancePrompt = vi.fn();
+    render(<Harness sendShortcut="enter" onSubmit={vi.fn()} onEnhancePrompt={onEnhancePrompt} />);
+    const editable = screen.getByTestId('editable');
+
+    editable.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: '/',
+        code: 'Slash',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(onEnhancePrompt).toHaveBeenCalledTimes(1);
   });
 });

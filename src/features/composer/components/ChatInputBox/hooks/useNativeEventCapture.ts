@@ -5,6 +5,19 @@ interface CompletionOpenLike {
   isOpen: boolean;
 }
 
+function isPromptEnhancerShortcut(event: Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey'>): boolean {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+    return false;
+  }
+
+  return (
+    event.code === 'Slash' ||
+    event.code === 'NumpadDivide' ||
+    event.key === '/' ||
+    event.key === '?'
+  );
+}
+
 export interface UseNativeEventCaptureOptions {
   editableRef: React.RefObject<HTMLDivElement | null>;
   isComposingRef: MutableRefObject<boolean>;
@@ -100,7 +113,7 @@ export function useNativeEventCapture({
       const shift = (ev as KeyboardEvent).shiftKey === true;
       sawShiftEnterRef.current = isEnterKey && shift;
 
-      if (ev.key === '/' && ev.metaKey && !ev.shiftKey && !ev.altKey) {
+      if (isPromptEnhancerShortcut(ev)) {
         ev.preventDefault();
         ev.stopPropagation();
         latest.handleEnhancePrompt();
