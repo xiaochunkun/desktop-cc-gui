@@ -8,6 +8,7 @@ import type {
 } from "../../../types";
 import {
   archiveThread as archiveThreadService,
+  deleteCodexSession as deleteCodexSessionService,
   deleteClaudeSession as deleteClaudeSessionService,
   deleteGeminiSession as deleteGeminiSessionService,
   deleteOpenCodeSession as deleteOpenCodeSessionService,
@@ -109,29 +110,56 @@ type GeminiSessionSummary = {
   sessionId: string;
   firstMessage: string;
   updatedAt: number;
+  fileSizeBytes?: number;
 };
+
+function normalizeThreadSizeBytes(value: unknown) {
+  const sizeBytes = asNumber(value);
+  return sizeBytes > 0 ? Math.round(sizeBytes) : undefined;
+}
+
+function extractThreadSizeBytes(record: Record<string, unknown>) {
+  return normalizeThreadSizeBytes(
+    record.sizeBytes ??
+      record.size_bytes ??
+      record.fileSizeBytes ??
+      record.file_size_bytes ??
+      record.byteSize ??
+      record.byte_size ??
+      record.bytes,
+  );
+}
+
+function normalizeGeminiSessionSummary(value: unknown): GeminiSessionSummary | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const sessionId = asString(record.sessionId ?? record.session_id).trim();
+  if (!sessionId) {
+    return null;
+  }
+  const fileSizeBytes = extractThreadSizeBytes(record);
+  return {
+    sessionId,
+    firstMessage: asString(record.firstMessage ?? record.first_message).trim(),
+    updatedAt: asNumber(record.updatedAt ?? record.updated_at),
+    ...(fileSizeBytes !== undefined ? { fileSizeBytes } : {}),
+  };
+}
 
 function normalizeGeminiSessionSummaries(value: unknown): GeminiSessionSummary[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
-      const record = entry as Record<string, unknown>;
-      const sessionId = asString(record.sessionId).trim();
-      if (!sessionId) {
-        return null;
-      }
-      return {
-        sessionId,
-        firstMessage: asString(record.firstMessage).trim(),
-        updatedAt: asNumber(record.updatedAt),
-      } satisfies GeminiSessionSummary;
-    })
-    .filter((entry): entry is GeminiSessionSummary => entry !== null);
+  const summaries: GeminiSessionSummary[] = [];
+  value.forEach((entry) => {
+    const summary = normalizeGeminiSessionSummary(entry);
+    if (summary) {
+      summaries.push(summary);
+    }
+  });
+  return summaries;
 }
 
 function mergeGeminiSessionSummaries(
@@ -159,6 +187,7 @@ function mergeGeminiSessionSummaries(
         getCustomName(workspaceId, id) ||
         previewThreadName(session.firstMessage, "Gemini Session"),
       updatedAt,
+      sizeBytes: session.fileSizeBytes,
       engineSource: "gemini",
     };
     if (!prev || next.updatedAt >= prev.updatedAt) {
@@ -337,6 +366,64 @@ function matchesWorkspacePath(threadCwd: string, workspacePath: string): boolean
     }
   }
   return false;
+}
+
+function isLikelyCodexThreadId(threadId: string): boolean {
+  const normalized = threadId.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return !(
+    normalized.startsWith("claude:") ||
+    normalized.startsWith("claude-pending-") ||
+    normalized.startsWith("gemini:") ||
+    normalized.startsWith("gemini-pending-") ||
+    normalized.startsWith("opencode:") ||
+    normalized.startsWith("opencode-pending-")
+  );
+}
+
+function collectKnownCodexThreadIds(
+  existingThreads: ThreadSummary[],
+  activeThreadId: string,
+): Set<string> {
+  const known = new Set<string>();
+  existingThreads.forEach((thread) => {
+    if (thread.engineSource === "codex" && thread.id) {
+      known.add(thread.id);
+    }
+  });
+  if (isLikelyCodexThreadId(activeThreadId)) {
+    known.add(activeThreadId);
+  }
+  return known;
+}
+
+function isLocalSessionScanUnavailable(result: Record<string, unknown>): boolean {
+  const marker = asString(result.partialSource ?? result.partial_source)
+    .trim()
+    .toLowerCase();
+  return marker === "local-session-scan-unavailable";
+}
+
+function shouldIncludeWorkspaceThreadEntry(
+  thread: Record<string, unknown>,
+  workspacePath: string,
+  knownCodexThreadIds: Set<string>,
+  allowKnownCodexWithoutCwd: boolean,
+): boolean {
+  const threadCwd = asString(thread.cwd).trim();
+  if (matchesWorkspacePath(threadCwd, workspacePath)) {
+    return shouldIncludeThreadEntry(thread);
+  }
+  if (!allowKnownCodexWithoutCwd || threadCwd.length > 0) {
+    return false;
+  }
+  const threadId = asString(thread.id).trim();
+  if (!threadId || !knownCodexThreadIds.has(threadId)) {
+    return false;
+  }
+  return shouldIncludeThreadEntry(thread);
 }
 
 function toBooleanFlag(value: unknown): boolean {
@@ -600,6 +687,20 @@ export function useThreadActions({
     async (workspaceId: string, options?: { activate?: boolean; engine?: "claude" | "codex" | "gemini" | "opencode" }) => {
       const shouldActivate = options?.activate !== false;
       const engine = options?.engine;
+      const resolveStartedThread = (
+        response: Record<string, unknown> | null | undefined,
+      ) => {
+        const threadId = extractThreadId(response);
+        if (threadId) {
+          dispatch({ type: "ensureThread", workspaceId, threadId, engine: "codex" });
+          if (shouldActivate) {
+            dispatch({ type: "setActiveThreadId", workspaceId, threadId });
+          }
+          loadedThreadsRef.current[threadId] = true;
+          return threadId;
+        }
+        return null;
+      };
 
       // For local CLI engines (Claude/Gemini/OpenCode), generate a local pending thread ID.
       if (engine === "claude" || engine === "gemini" || engine === "opencode") {
@@ -639,17 +740,38 @@ export function useThreadActions({
           label: "thread/start response",
           payload: response,
         });
-        const threadId = extractThreadId(response);
-        if (threadId) {
-          dispatch({ type: "ensureThread", workspaceId, threadId, engine: "codex" });
-          if (shouldActivate) {
-            dispatch({ type: "setActiveThreadId", workspaceId, threadId });
-          }
-          loadedThreadsRef.current[threadId] = true;
-          return threadId;
-        }
-        return null;
+        return resolveStartedThread(response);
       } catch (error) {
+        if (isWorkspaceNotConnectedError(error)) {
+          onDebug?.({
+            id: `${Date.now()}-client-workspace-reconnect-before-thread-start`,
+            timestamp: Date.now(),
+            source: "client",
+            label: "workspace/reconnect before thread start",
+            payload: { workspaceId },
+          });
+          try {
+            await connectWorkspaceService(workspaceId);
+            const retryResponse = await startThreadService(workspaceId);
+            onDebug?.({
+              id: `${Date.now()}-server-thread-start-retry`,
+              timestamp: Date.now(),
+              source: "server",
+              label: "thread/start retry response",
+              payload: retryResponse,
+            });
+            return resolveStartedThread(retryResponse);
+          } catch (retryError) {
+            onDebug?.({
+              id: `${Date.now()}-client-thread-start-error`,
+              timestamp: Date.now(),
+              source: "error",
+              label: "thread/start error",
+              payload: retryError instanceof Error ? retryError.message : String(retryError),
+            });
+            throw retryError;
+          }
+        }
         onDebug?.({
           id: `${Date.now()}-client-thread-start-error`,
           timestamp: Date.now(),
@@ -1204,6 +1326,10 @@ export function useThreadActions({
         }
         const existingThreads = threadsByWorkspace[workspace.id] ?? [];
         const activeThreadId = activeThreadIdByWorkspace[workspace.id] ?? "";
+        const knownCodexThreadIds = collectKnownCodexThreadIds(
+          existingThreads,
+          activeThreadId,
+        );
         const engineById = new Map(
           existingThreads.map((thread) => [thread.id, thread.engineSource]),
         );
@@ -1234,24 +1360,42 @@ export function useThreadActions({
         let cursor: string | null = null;
         do {
           pagesFetched += 1;
-          const response = (await (async () => {
-            try {
-              return await listThreadsService(workspace.id, cursor, pageSize);
-            } catch (error) {
-              if (!isWorkspaceNotConnectedError(error)) {
-                throw error;
+          let response: Record<string, unknown>;
+          try {
+            response = (await (async () => {
+              try {
+                return await listThreadsService(workspace.id, cursor, pageSize);
+              } catch (error) {
+                if (!isWorkspaceNotConnectedError(error)) {
+                  throw error;
+                }
+                onDebug?.({
+                  id: `${Date.now()}-client-workspace-reconnect-before-thread-list`,
+                  timestamp: Date.now(),
+                  source: "client",
+                  label: "workspace/reconnect before thread list",
+                  payload: { workspaceId: workspace.id },
+                });
+                await connectWorkspaceService(workspace.id);
+                return await listThreadsService(workspace.id, cursor, pageSize);
               }
-              onDebug?.({
-                id: `${Date.now()}-client-workspace-reconnect-before-thread-list`,
-                timestamp: Date.now(),
-                source: "client",
-                label: "workspace/reconnect before thread list",
-                payload: { workspaceId: workspace.id },
-              });
-              await connectWorkspaceService(workspace.id);
-              return await listThreadsService(workspace.id, cursor, pageSize);
+            })()) as Record<string, unknown>;
+          } catch (error) {
+            if (!isWorkspaceNotConnectedError(error)) {
+              throw error;
             }
-          })()) as Record<string, unknown>;
+            onDebug?.({
+              id: `${Date.now()}-client-thread-list-codex-unavailable`,
+              timestamp: Date.now(),
+              source: "client",
+              label: "thread/list codex unavailable",
+              payload: {
+                workspaceId: workspace.id,
+                reason: error instanceof Error ? error.message : String(error),
+              },
+            });
+            break;
+          }
           onDebug?.({
             id: `${Date.now()}-server-thread-list`,
             timestamp: Date.now(),
@@ -1263,13 +1407,18 @@ export function useThreadActions({
           const data = Array.isArray(result?.data)
             ? (result.data as Record<string, unknown>[])
             : [];
+          const allowKnownCodexWithoutCwd = isLocalSessionScanUnavailable(result);
           const nextCursor =
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
               (thread) =>
-                matchesWorkspacePath(String(thread?.cwd ?? ""), workspacePath) &&
-                shouldIncludeThreadEntry(thread),
+                shouldIncludeWorkspaceThreadEntry(
+                  thread,
+                  workspacePath,
+                  knownCodexThreadIds,
+                  allowKnownCodexWithoutCwd,
+                ),
             ),
           );
           cursor = nextCursor;
@@ -1370,6 +1519,7 @@ export function useThreadActions({
               id,
               name,
               updatedAt: getThreadTimestamp(thread),
+              sizeBytes: extractThreadSizeBytes(thread),
               engineSource,
               ...sourceMeta,
             };
@@ -1381,7 +1531,7 @@ export function useThreadActions({
         // so codex/claude thread list latency stays isolated from Gemini I/O scans.
         let allSummaries: ThreadSummary[] = summaries;
         const mergedById = new Map<string, ThreadSummary>();
-        summaries.forEach((entry) => mergedById.set(entry.id, entry));
+        allSummaries.forEach((entry) => mergedById.set(entry.id, entry));
         const [claudeResult, opencodeResult] = await Promise.allSettled([
           listClaudeSessionsService(workspace.path, 50),
           getOpenCodeSessionListService(workspace.id),
@@ -1395,6 +1545,7 @@ export function useThreadActions({
               sessionId: string;
               firstMessage: string;
               updatedAt: number;
+              fileSizeBytes?: number;
             }) => {
               const id = `claude:${session.sessionId}`;
               const prev = mergedById.get(id);
@@ -1406,6 +1557,7 @@ export function useThreadActions({
                   getCustomName(workspace.id, id) ||
                   previewThreadName(session.firstMessage, "Claude Session"),
                 updatedAt,
+                sizeBytes: normalizeThreadSizeBytes(session.fileSizeBytes),
                 engineSource: "claude",
               };
               if (!prev || next.updatedAt >= prev.updatedAt) {
@@ -1441,6 +1593,7 @@ export function useThreadActions({
                 getCustomName(workspace.id, id) ||
                 previewThreadName(session.title, "OpenCode Session"),
               updatedAt,
+              sizeBytes: extractThreadSizeBytes(session as Record<string, unknown>),
               engineSource: "opencode",
             };
             if (!prev || next.updatedAt >= prev.updatedAt) {
@@ -1603,6 +1756,8 @@ export function useThreadActions({
       }
       const workspacePath = normalizeComparableWorkspacePath(workspace.path);
       const existing = threadsByWorkspace[workspace.id] ?? [];
+      const activeThreadId = activeThreadIdByWorkspace[workspace.id] ?? "";
+      const knownCodexThreadIds = collectKnownCodexThreadIds(existing, activeThreadId);
       dispatch({
         type: "setThreadListPaging",
         workspaceId: workspace.id,
@@ -1649,13 +1804,18 @@ export function useThreadActions({
           const data = Array.isArray(result?.data)
             ? (result.data as Record<string, unknown>[])
             : [];
+          const allowKnownCodexWithoutCwd = isLocalSessionScanUnavailable(result);
           const next =
             (result?.nextCursor ?? result?.next_cursor ?? null) as string | null;
           matchingThreads.push(
             ...data.filter(
               (thread) =>
-                matchesWorkspacePath(String(thread?.cwd ?? ""), workspacePath) &&
-                shouldIncludeThreadEntry(thread),
+                shouldIncludeWorkspaceThreadEntry(
+                  thread,
+                  workspacePath,
+                  knownCodexThreadIds,
+                  allowKnownCodexWithoutCwd,
+                ),
             ),
           );
           cursor = next;
@@ -1690,6 +1850,7 @@ export function useThreadActions({
             id,
             name,
             updatedAt: getThreadTimestamp(thread),
+            sizeBytes: extractThreadSizeBytes(thread),
             ...resolveThreadSourceMeta(thread),
           });
           existingIds.add(id);
@@ -1741,6 +1902,7 @@ export function useThreadActions({
       getCustomName,
       onDebug,
       onThreadTitleMappingsLoaded,
+      activeThreadIdByWorkspace,
       threadListCursorByWorkspace,
       threadsByWorkspace,
     ],
@@ -1812,9 +1974,9 @@ export function useThreadActions({
         await deleteGeminiSessionService(workspacePath, sessionId);
         return;
       }
-      await archiveThread(workspaceId, threadId);
+      await deleteCodexSessionService(workspaceId, threadId);
     },
-    [archiveClaudeThread, archiveThread],
+    [archiveClaudeThread],
   );
 
   const renameThreadTitleMapping = useCallback(

@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ComposerSendShortcut,
@@ -36,7 +44,6 @@ import type {
   PermissionMode,
   SelectedAgent as ChatInputSelectedAgent,
 } from "./ChatInputBox/types";
-import { StatusPanel } from "../../status-panel/components/StatusPanel";
 import { useStatusPanelData } from "../../status-panel/hooks/useStatusPanelData";
 import {
   assembleSinglePrompt,
@@ -183,10 +190,15 @@ type ComposerProps = {
   fileReferenceMode?: "path" | "none";
   activeWorkspaceId?: string | null;
   activeThreadId?: string | null;
+  threadItemsByThread?: Record<string, ConversationItem[]>;
+  threadParentById?: Record<string, string>;
+  threadStatusById?: Record<string, { isProcessing?: boolean } | undefined>;
   plan?: TurnPlan | null;
   isPlanMode?: boolean;
   onOpenDiffPath?: (path: string) => void;
   onRewind?: () => void;
+  statusPanelExpandedOverride?: boolean;
+  onToggleStatusPanelOverride?: () => void;
 };
 
 type ManualMemorySelection = {
@@ -545,20 +557,26 @@ export const Composer = memo(function Composer({
   fileReferenceMode = "path",
   activeWorkspaceId = null,
   activeThreadId = null,
+  threadItemsByThread,
+  threadParentById,
+  threadStatusById,
   plan = null,
   isPlanMode = false,
-  onOpenDiffPath,
   onRewind,
+  statusPanelExpandedOverride,
+  onToggleStatusPanelOverride,
 }: ComposerProps) {
   const { t } = useTranslation();
   const isCodexEngine = selectedEngine === "codex";
+  const deferredItems = useDeferredValue(items);
+  const performanceScopedItems = isProcessing ? deferredItems : items;
   const supportsStreamActivityPhaseFx =
     selectedEngine === "codex" ||
     selectedEngine === "claude" ||
     selectedEngine === "gemini";
   const streamActivityPhase = useStreamActivityPhase({
     isProcessing: Boolean(isProcessing && supportsStreamActivityPhaseFx),
-    items,
+    items: performanceScopedItems,
   });
   const isReviewQuickActionEngine =
     selectedEngine === "codex" || selectedEngine === "claude";
@@ -567,8 +585,14 @@ export const Composer = memo(function Composer({
     selectedEngine === "codex" ||
     selectedEngine === "gemini";
   const { todoTotal, subagentTotal, fileChanges, commandTotal } = useStatusPanelData(
-    items,
-    { isCodexEngine },
+    performanceScopedItems,
+    {
+      isCodexEngine,
+      activeThreadId,
+      itemsByThread: threadItemsByThread,
+      threadParentById,
+      threadStatusById,
+    },
   );
   const hasStatusPanelActivity = useMemo(() => {
     const hasLegacyActivity =
@@ -713,6 +737,9 @@ export const Composer = memo(function Composer({
   }, [textareaHeight]);
 
   useEffect(() => {
+    if (statusPanelExpandedOverride !== undefined) {
+      return;
+    }
     const hadActivity = previousStatusPanelActivityRef.current;
     if (!hasStatusPanelActivity) {
       setStatusPanelExpanded(false);
@@ -720,7 +747,7 @@ export const Composer = memo(function Composer({
       setStatusPanelExpanded(true);
     }
     previousStatusPanelActivityRef.current = hasStatusPanelActivity;
-  }, [hasStatusPanelActivity]);
+  }, [hasStatusPanelActivity, statusPanelExpandedOverride]);
 
   useEffect(() => {
     setSelectedManualMemories([]);
@@ -914,6 +941,10 @@ export const Composer = memo(function Composer({
   const handleToggleStatusPanel = useCallback(() => {
     setStatusPanelExpanded((prev) => !prev);
   }, []);
+  const resolvedStatusPanelExpanded =
+    statusPanelExpandedOverride ?? statusPanelExpanded;
+  const resolvedToggleStatusPanel =
+    onToggleStatusPanelOverride ?? handleToggleStatusPanel;
 
   const handleRewind = useCallback(() => {
     if (onRewind) {
@@ -1169,17 +1200,6 @@ export const Composer = memo(function Composer({
 
   return (
     <footer className={`composer${disabled ? " is-disabled" : ""}`}>
-      {showStatusPanel && (
-        <StatusPanel
-          items={items}
-          isProcessing={isProcessing}
-          expanded={statusPanelExpanded}
-          plan={plan}
-          isPlanMode={isPlanMode}
-          isCodexEngine={isCodexEngine}
-          onOpenDiffPath={onOpenDiffPath}
-        />
-      )}
       <div className={`composer-shell${isComposerCollapsed ? " is-collapsed" : ""}`}>
         {isComposerCollapsed ? (
           <button
@@ -1366,9 +1386,9 @@ export const Composer = memo(function Composer({
           hasMessages={items.length > 0}
           onRewind={handleRewind}
           showRewindEntry={false}
-          statusPanelExpanded={statusPanelExpanded}
+          statusPanelExpanded={resolvedStatusPanelExpanded}
           showStatusPanelToggle={showStatusPanel}
-          onToggleStatusPanel={handleToggleStatusPanel}
+          onToggleStatusPanel={resolvedToggleStatusPanel}
         />
           </>
         )}

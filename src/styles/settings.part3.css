@@ -172,6 +172,14 @@
       "help";
   }
 
+  .settings-section-basic .settings-field.settings-basic-item.settings-scale-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-section-basic .settings-scale-control {
+    flex-wrap: wrap;
+  }
+
   .settings-section-basic .settings-basic-theme-selector {
     justify-content: flex-start;
     flex-wrap: wrap;

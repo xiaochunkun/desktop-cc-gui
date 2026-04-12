@@ -1585,7 +1585,7 @@ export function SettingsView({
   return (
     <div className="settings-embedded">
       <div className="settings-header" />
-      <div className="settings-body">
+      <div className={`settings-body${sidebarCollapsed ? " is-sidebar-collapsed" : ""}`}>
         <aside className={`settings-sidebar${sidebarCollapsed ? " is-collapsed" : ""}`}>
             <button
               type="button"
@@ -2313,7 +2313,7 @@ export function SettingsView({
             {activeSection === "community" && (
               <section className="settings-section settings-about-section">
                 <div className="settings-about-name">
-                  MossX
+                  ccgui
                   {appVersion && (
                     <span className="settings-about-version">{appVersion}</span>
                   )}
@@ -2325,7 +2325,7 @@ export function SettingsView({
                   <button
                     type="button"
                     className="ghost"
-                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/mossx")}
+                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/ccgui")}
                   >
                     {t("about.github")}
                   </button>

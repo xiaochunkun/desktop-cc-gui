@@ -1,6 +1,6 @@
 import type React from "react";
 import { useTranslation } from "react-i18next";
-import { Monitor, Moon, Palette, RotateCcw, Sun, Type, MessageCircle, Info } from "lucide-react";
+import { ArrowLeftRight, Monitor, Moon, Palette, RotateCcw, Sun, Type, MessageCircle, Info, PanelsLeftRight } from "lucide-react";
 import type { AppSettings } from "../../../../../types";
 import { clampUiScale } from "../../../../../utils/uiScale";
 import {
@@ -158,6 +158,88 @@ export function BasicAppearanceSection({
         <LanguageSelector rowClassName="settings-basic-item" />
         <div className="settings-field settings-basic-item">
           <div className="settings-basic-field-header">
+            <ArrowLeftRight className="settings-basic-field-icon" aria-hidden />
+            <span className="settings-basic-field-label">{t("settings.canvasWidth")}</span>
+          </div>
+          <div className="settings-basic-theme-selector" role="radiogroup" aria-label={t("settings.canvasWidth")}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={appSettings.canvasWidthMode !== "wide"}
+              className={`settings-basic-theme-option ${
+                appSettings.canvasWidthMode !== "wide" ? "active" : ""
+              }`}
+              onClick={() =>
+                void onUpdateAppSettings({
+                  ...appSettings,
+                  canvasWidthMode: "narrow",
+                })
+              }
+            >
+              <span>{t("settings.canvasWidthNarrow")}</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={appSettings.canvasWidthMode === "wide"}
+              className={`settings-basic-theme-option ${
+                appSettings.canvasWidthMode === "wide" ? "active" : ""
+              }`}
+              onClick={() =>
+                void onUpdateAppSettings({
+                  ...appSettings,
+                  canvasWidthMode: "wide",
+                })
+              }
+            >
+              <span>{t("settings.canvasWidthWide")}</span>
+            </button>
+          </div>
+          <div className="settings-help">{t("settings.canvasWidthDesc")}</div>
+        </div>
+        <div className="settings-field settings-basic-item">
+          <div className="settings-basic-field-header">
+            <PanelsLeftRight className="settings-basic-field-icon" aria-hidden />
+            <span className="settings-basic-field-label">{t("settings.layoutMode")}</span>
+          </div>
+          <div className="settings-basic-theme-selector" role="radiogroup" aria-label={t("settings.layoutMode")}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={appSettings.layoutMode !== "swapped"}
+              className={`settings-basic-theme-option ${
+                appSettings.layoutMode !== "swapped" ? "active" : ""
+              }`}
+              onClick={() =>
+                void onUpdateAppSettings({
+                  ...appSettings,
+                  layoutMode: "default",
+                })
+              }
+            >
+              <span>{t("settings.layoutModeDefault")}</span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={appSettings.layoutMode === "swapped"}
+              className={`settings-basic-theme-option ${
+                appSettings.layoutMode === "swapped" ? "active" : ""
+              }`}
+              onClick={() =>
+                void onUpdateAppSettings({
+                  ...appSettings,
+                  layoutMode: "swapped",
+                })
+              }
+            >
+              <span>{t("settings.layoutModeSwapped")}</span>
+            </button>
+          </div>
+          <div className="settings-help">{t("settings.layoutModeDesc")}</div>
+        </div>
+        <div className="settings-field settings-basic-item settings-scale-item">
+          <div className="settings-basic-field-header">
             <Type className="settings-basic-field-icon" aria-hidden />
             <span className="settings-basic-field-label">{t("settings.interfaceScale")}</span>
           </div>
@@ -181,20 +263,20 @@ export function BasicAppearanceSection({
             <span className="settings-scale-value">{uiScaleDraftPercentLabel}</span>
             <button
               type="button"
-              className="ghost settings-button-compact settings-scale-reset"
-              onClick={handleResetUiScaleDraft}
-              data-testid="settings-ui-scale-reset"
-            >
-              {t("settings.uiScaleReset")}
-            </button>
-            <button
-              type="button"
               className="primary settings-button-compact settings-scale-save"
               onClick={handleSaveUiScale}
               disabled={uiScaleDraft === clampedUiScale}
               data-testid="settings-ui-scale-save"
             >
               {t("common.save")}
+            </button>
+            <button
+              type="button"
+              className="ghost settings-button-compact settings-scale-reset"
+              onClick={handleResetUiScaleDraft}
+              data-testid="settings-ui-scale-reset"
+            >
+              {t("settings.uiScaleReset")}
             </button>
           </div>
           <div className="settings-help" title={scaleShortcutTitle}>

@@ -367,6 +367,8 @@ pub(crate) struct LocalUsageUsageData {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LocalUsageSessionSummary {
     pub(crate) session_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) session_id_aliases: Vec<String>,
     pub(crate) timestamp: i64,
     pub(crate) model: String,
     pub(crate) usage: LocalUsageUsageData,
@@ -377,6 +379,10 @@ pub(crate) struct LocalUsageSessionSummary {
     pub(crate) source: Option<String>,
     #[serde(default)]
     pub(crate) provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) file_size_bytes: Option<u64>,
+    #[serde(default)]
+    pub(crate) modified_lines: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -401,6 +407,20 @@ pub(crate) struct LocalUsageModelUsage {
     pub(crate) cache_creation_tokens: i64,
     pub(crate) cache_read_tokens: i64,
     pub(crate) session_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageEngineUsage {
+    pub(crate) engine: String,
+    pub(crate) count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LocalUsageDailyCodeChange {
+    pub(crate) date: String,
+    pub(crate) modified_lines: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -439,6 +459,12 @@ pub(crate) struct LocalUsageStatistics {
     pub(crate) daily_usage: Vec<LocalUsageDailyUsage>,
     pub(crate) weekly_comparison: LocalUsageWeeklyComparison,
     pub(crate) by_model: Vec<LocalUsageModelUsage>,
+    pub(crate) total_engine_usage_count: i64,
+    #[serde(default)]
+    pub(crate) engine_usage: Vec<LocalUsageEngineUsage>,
+    pub(crate) ai_code_modified_lines: i64,
+    #[serde(default)]
+    pub(crate) daily_code_changes: Vec<LocalUsageDailyCodeChange>,
     pub(crate) last_updated: i64,
 }
 
@@ -705,6 +731,10 @@ pub(crate) struct AppSettings {
         rename = "showMessageAnchors"
     )]
     pub(crate) show_message_anchors: bool,
+    #[serde(default = "default_canvas_width_mode", rename = "canvasWidthMode")]
+    pub(crate) canvas_width_mode: String,
+    #[serde(default = "default_layout_mode", rename = "layoutMode")]
+    pub(crate) layout_mode: String,
     #[serde(default = "default_ui_font_family", rename = "uiFontFamily")]
     pub(crate) ui_font_family: String,
     #[serde(default = "default_code_font_family", rename = "codeFontFamily")]
@@ -895,6 +925,14 @@ fn default_usage_show_remaining() -> bool {
 
 fn default_show_message_anchors() -> bool {
     true
+}
+
+fn default_canvas_width_mode() -> String {
+    "narrow".to_string()
+}
+
+fn default_layout_mode() -> String {
+    "default".to_string()
 }
 
 fn default_ui_font_family() -> String {
@@ -1199,6 +1237,8 @@ impl Default for AppSettings {
             user_msg_color: default_user_msg_color(),
             usage_show_remaining: default_usage_show_remaining(),
             show_message_anchors: default_show_message_anchors(),
+            canvas_width_mode: default_canvas_width_mode(),
+            layout_mode: default_layout_mode(),
             ui_font_family: default_ui_font_family(),
             code_font_family: default_code_font_family(),
             code_font_size: default_code_font_size(),
@@ -1376,6 +1416,8 @@ mod tests {
         assert!(settings.user_msg_color.is_empty());
         assert!(!settings.usage_show_remaining);
         assert!(settings.show_message_anchors);
+        assert_eq!(settings.canvas_width_mode, "narrow");
+        assert_eq!(settings.layout_mode, "default");
         assert!(settings.ui_font_family.starts_with("Monaco"));
         assert!(settings.code_font_family.starts_with("Monaco"));
         assert_eq!(settings.code_font_size, 11);

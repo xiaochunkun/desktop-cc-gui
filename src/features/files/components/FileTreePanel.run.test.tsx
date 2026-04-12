@@ -974,7 +974,7 @@ describe("FileTreePanel run action isolation", () => {
     fireEvent.dragStart(pkg, { dataTransfer });
 
     const payloadJson = setData.mock.calls.find(
-      (call) => call[0] === "application/x-codemoss-file-paths",
+      (call) => call[0] === "application/x-ccgui-file-paths",
     )?.[1];
     const payloadText = setData.mock.calls.find(
       (call) => call[0] === "text/plain",
@@ -1005,6 +1005,56 @@ describe("FileTreePanel run action isolation", () => {
     expect(window.__fileTreeDragOverChat).toBeUndefined();
     expect(window.__fileTreeDragDropped).toBeUndefined();
     expect(window.__fileTreeDragCleanup).toBeUndefined();
+  });
+
+  it("uses a windows-only drag image for internal tree drags", () => {
+    const originalPlatform = window.navigator.platform;
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: "Win32",
+    });
+
+    render(
+      <FileTreePanel
+        workspaceId="workspace-1"
+        workspacePath="/tmp/workspace"
+        files={["README.md"]}
+        isLoading={false}
+        filePanelMode="files"
+        onFilePanelModeChange={() => undefined}
+        onOpenFile={() => undefined}
+        onInsertText={() => undefined}
+        openTargets={[]}
+        openAppIconById={{}}
+        selectedOpenAppId=""
+        onSelectOpenAppId={() => undefined}
+        gitStatusFiles={[]}
+        gitignoredFiles={new Set<string>()}
+      />,
+    );
+
+    const setDragImage = vi.fn();
+    fireEvent.dragStart(screen.getByRole("button", { name: "README.md" }), {
+      dataTransfer: {
+        setData: vi.fn(),
+        setDragImage,
+        effectAllowed: "",
+      },
+    });
+
+    expect(setDragImage).toHaveBeenCalledTimes(1);
+    const dragImageNode = setDragImage.mock.calls[0]?.[0] as HTMLElement | undefined;
+    expect(dragImageNode).toBeInstanceOf(HTMLElement);
+    expect(dragImageNode?.textContent).toContain("README.md");
+    expect(document.body.contains(dragImageNode ?? null)).toBe(true);
+
+    fireEvent.dragEnd(screen.getByRole("button", { name: "README.md" }));
+    expect(document.body.contains(dragImageNode ?? null)).toBe(false);
+
+    Object.defineProperty(window.navigator, "platform", {
+      configurable: true,
+      value: originalPlatform,
+    });
   });
 
   it("uses the same insertion bridge as the + action when tree drag ends over chat input", () => {

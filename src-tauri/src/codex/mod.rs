@@ -3,7 +3,7 @@ use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
@@ -18,6 +18,7 @@ pub(crate) mod thread_mode_state;
 
 use self::args::resolve_workspace_codex_args;
 use self::home::resolve_workspace_codex_home;
+use crate::app_paths;
 pub(crate) use crate::backend::app_server::WorkspaceSession;
 use crate::backend::app_server::{
     build_codex_path_env, check_codex_installation, get_cli_debug_info, probe_codex_app_server,
@@ -77,14 +78,32 @@ fn build_thread_list_empty_response() -> Value {
     })
 }
 
-fn thread_list_response_is_empty(response: &Value) -> bool {
-    response
-        .get("result")
-        .and_then(|result| result.get("data"))
-        .or_else(|| response.get("data"))
-        .and_then(Value::as_array)
-        .map(|items| items.is_empty())
-        .unwrap_or(true)
+const UNIFIED_CODEX_CURSOR_PREFIX: &str = "codex-unified:";
+const UNIFIED_CODEX_MAX_THREADS: usize = 5_000;
+const UNIFIED_CODEX_MAX_PAGES: usize = 200;
+const UNIFIED_CODEX_PAGE_SIZE: u32 = 200;
+const LOCAL_SESSION_SCAN_UNAVAILABLE_PARTIAL_SOURCE: &str = "local-session-scan-unavailable";
+
+static WORKSPACE_CODEX_SESSION_ID_CACHE: OnceLock<Mutex<HashMap<String, HashSet<String>>>> =
+    OnceLock::new();
+
+fn workspace_codex_session_id_cache() -> &'static Mutex<HashMap<String, HashSet<String>>> {
+    WORKSPACE_CODEX_SESSION_ID_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn parse_unified_codex_cursor(cursor: Option<&str>) -> usize {
+    let Some(cursor) = cursor.map(str::trim).filter(|value| !value.is_empty()) else {
+        return 0;
+    };
+    cursor
+        .strip_prefix(UNIFIED_CODEX_CURSOR_PREFIX)
+        .unwrap_or(cursor)
+        .parse::<usize>()
+        .unwrap_or(0)
+}
+
+fn build_unified_codex_cursor(offset: usize) -> Value {
+    Value::String(format!("{UNIFIED_CODEX_CURSOR_PREFIX}{offset}"))
 }
 
 #[allow(dead_code)]
@@ -134,6 +153,21 @@ fn build_thread_source_label(source: Option<&str>, provider: Option<&str>) -> Op
     }
 }
 
+fn thread_entry_has_non_empty_string(entry: &Map<String, Value>, key: &str) -> bool {
+    entry
+        .get(key)
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn ensure_thread_entry_workspace_cwd(entry: &mut Map<String, Value>, workspace_path: &str) {
+    if workspace_path.trim().is_empty() || thread_entry_has_non_empty_string(entry, "cwd") {
+        return;
+    }
+    entry.insert("cwd".to_string(), Value::String(workspace_path.to_string()));
+}
+
 #[allow(dead_code)]
 fn thread_entry_id(entry: &Value) -> Option<String> {
     normalize_optional_string(entry.get("id").and_then(Value::as_str))
@@ -178,6 +212,7 @@ fn build_local_codex_thread_entry(
         "cwd": workspace_path,
         "createdAt": session.timestamp,
         "updatedAt": session.timestamp,
+        "sizeBytes": session.file_size_bytes,
         "localFallback": true,
         "source": source,
         "provider": provider,
@@ -185,28 +220,56 @@ fn build_local_codex_thread_entry(
     })
 }
 
-fn build_local_codex_thread_fallback_response_from_sessions(
-    workspace_path: &str,
-    sessions: &[LocalUsageSessionSummary],
-    requested_limit: usize,
-) -> Value {
-    let data: Vec<Value> = sessions
-        .iter()
-        .take(requested_limit)
-        .map(|session| build_local_codex_thread_entry(workspace_path, session))
-        .collect();
-    json!({
-        "result": {
-            "data": data,
-            "nextCursor": null
+fn codex_session_identifier_candidates(session: &LocalUsageSessionSummary) -> Vec<String> {
+    let mut ids = Vec::new();
+    let canonical = session.session_id.trim();
+    if !canonical.is_empty() {
+        ids.push(canonical.to_string());
+    }
+    for alias in &session.session_id_aliases {
+        let normalized = alias.trim();
+        if normalized.is_empty() || ids.iter().any(|existing| existing == normalized) {
+            continue;
         }
-    })
+        ids.push(normalized.to_string());
+    }
+    ids
+}
+
+fn collect_codex_session_identifiers(
+    local_sessions: &[LocalUsageSessionSummary],
+) -> HashSet<String> {
+    local_sessions
+        .iter()
+        .flat_map(codex_session_identifier_candidates)
+        .collect()
+}
+
+fn cache_workspace_session_identifiers(workspace_id: &str, session_ids: &HashSet<String>) {
+    let mut cache = workspace_codex_session_id_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if session_ids.is_empty() {
+        cache.remove(workspace_id);
+        return;
+    }
+    cache.insert(workspace_id.to_string(), session_ids.clone());
+}
+
+fn read_cached_workspace_session_identifiers(workspace_id: &str) -> HashSet<String> {
+    workspace_codex_session_id_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(workspace_id)
+        .cloned()
+        .unwrap_or_default()
 }
 
 #[allow(dead_code)]
 fn merge_unified_codex_thread_entries(
     mut live_entries: Vec<Value>,
     local_sessions: &[LocalUsageSessionSummary],
+    workspace_session_ids: &HashSet<String>,
     workspace_path: &str,
     requested_limit: usize,
 ) -> Vec<Value> {
@@ -217,6 +280,15 @@ fn merge_unified_codex_thread_entries(
         let Some(id) = thread_entry_id(&entry) else {
             continue;
         };
+        let mut entry = entry;
+        if let Some(existing) = entry.as_object_mut() {
+            // Avoid force-marking ambiguous live rows as current workspace.
+            // Only backfill cwd when this row can be mapped to local workspace
+            // session identifiers (canonical id or aliases).
+            if workspace_session_ids.contains(&id) {
+                ensure_thread_entry_workspace_cwd(existing, workspace_path);
+            }
+        }
         if let Some(existing_index) = id_to_index.get(&id).copied() {
             let existing_timestamp = thread_entry_timestamp(&merged_entries[existing_index]);
             let candidate_timestamp = thread_entry_timestamp(&entry);
@@ -232,10 +304,14 @@ fn merge_unified_codex_thread_entries(
 
     for session in local_sessions {
         let local_entry = build_local_codex_thread_entry(workspace_path, session);
-        let Some(id) = thread_entry_id(&local_entry) else {
+        let ids = codex_session_identifier_candidates(session);
+        let Some(_) = ids.first() else {
             continue;
         };
-        if let Some(existing_index) = id_to_index.get(&id).copied() {
+        let existing_index = ids
+            .iter()
+            .find_map(|candidate| id_to_index.get(candidate).copied());
+        if let Some(existing_index) = existing_index {
             if let (Some(existing), Some(local)) = (
                 merged_entries[existing_index].as_object_mut(),
                 local_entry.as_object(),
@@ -272,6 +348,10 @@ fn merge_unified_codex_thread_entries(
                         existing.insert("sourceLabel".to_string(), value.clone());
                     }
                 }
+                if let Some(value) = local.get("sizeBytes").filter(|value| !value.is_null()) {
+                    existing.insert("sizeBytes".to_string(), value.clone());
+                }
+                ensure_thread_entry_workspace_cwd(existing, workspace_path);
                 for key in ["source", "provider", "sourceLabel"] {
                     let missing = match existing.get(key) {
                         None => true,
@@ -293,7 +373,9 @@ fn merge_unified_codex_thread_entries(
             continue;
         }
         let next_index = merged_entries.len();
-        id_to_index.insert(id, next_index);
+        for candidate in ids {
+            id_to_index.insert(candidate, next_index);
+        }
         merged_entries.push(local_entry);
     }
 
@@ -335,6 +417,149 @@ fn build_unified_codex_thread_response(
     result
 }
 
+async fn resolve_workspace_path(state: &AppState, workspace_id: &str) -> Result<String, String> {
+    let workspaces = state.workspaces.lock().await;
+    workspaces
+        .get(workspace_id)
+        .map(|entry| entry.path.clone())
+        .ok_or_else(|| "workspace not found".to_string())
+}
+
+async fn load_all_live_codex_thread_entries(
+    state: &AppState,
+    workspace_id: &str,
+) -> Result<Vec<Value>, String> {
+    let mut all_entries = Vec::new();
+    let mut cursor: Option<String> = None;
+    let mut pages_fetched: usize = 0;
+
+    loop {
+        pages_fetched += 1;
+        let response = match codex_core::list_threads_core(
+            &state.sessions,
+            workspace_id.to_string(),
+            cursor.clone(),
+            Some(UNIFIED_CODEX_PAGE_SIZE),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if all_entries.is_empty() {
+                    return Err(error);
+                }
+                log::warn!(
+                    "[list_threads] Partial live Codex list for workspace {} after {} pages: {}",
+                    workspace_id,
+                    pages_fetched.saturating_sub(1),
+                    error
+                );
+                break;
+            }
+        };
+
+        all_entries.extend(thread_list_response_entries(&response));
+        if all_entries.len() >= UNIFIED_CODEX_MAX_THREADS {
+            break;
+        }
+
+        let next_cursor = thread_list_response_next_cursor(&response)
+            .and_then(|value| value.as_str().map(ToString::to_string));
+        let Some(next_cursor) = next_cursor.filter(|value| !value.trim().is_empty()) else {
+            break;
+        };
+        if pages_fetched >= UNIFIED_CODEX_MAX_PAGES {
+            log::warn!(
+                "[list_threads] Reached live Codex page cap for workspace {}",
+                workspace_id
+            );
+            break;
+        }
+        cursor = Some(next_cursor);
+    }
+
+    Ok(all_entries)
+}
+
+async fn build_unified_codex_thread_page(
+    state: &AppState,
+    workspace_id: &str,
+    cursor: Option<String>,
+    limit: Option<u32>,
+    live_enabled: bool,
+) -> Result<Value, String> {
+    let requested_limit = limit.unwrap_or(50).clamp(1, 200) as usize;
+    let page_offset = parse_unified_codex_cursor(cursor.as_deref());
+    let workspace_path = resolve_workspace_path(state, workspace_id).await?;
+
+    let live_entries = if live_enabled {
+        load_all_live_codex_thread_entries(state, workspace_id).await?
+    } else {
+        Vec::new()
+    };
+
+    let (local_sessions, workspace_session_ids, partial_source): (
+        Vec<LocalUsageSessionSummary>,
+        HashSet<String>,
+        Option<&str>,
+    ) = match load_local_codex_session_summaries(state, workspace_id, usize::MAX).await {
+        Ok((_, sessions)) => {
+            let session_ids = collect_codex_session_identifiers(&sessions);
+            cache_workspace_session_identifiers(workspace_id, &session_ids);
+            (sessions, session_ids, None)
+        }
+        Err(error) => {
+            log::debug!(
+                "[list_threads] Local Codex session scan unavailable for {}: {}",
+                workspace_id,
+                error
+            );
+            let cached_ids = read_cached_workspace_session_identifiers(workspace_id);
+            if !cached_ids.is_empty() {
+                log::debug!(
+                    "[list_threads] Reusing {} cached Codex session ids for workspace {}",
+                    cached_ids.len(),
+                    workspace_id
+                );
+            }
+            (
+                Vec::new(),
+                cached_ids,
+                Some(LOCAL_SESSION_SCAN_UNAVAILABLE_PARTIAL_SOURCE),
+            )
+        }
+    };
+
+    let merged_entries = merge_unified_codex_thread_entries(
+        live_entries,
+        &local_sessions,
+        &workspace_session_ids,
+        &workspace_path,
+        UNIFIED_CODEX_MAX_THREADS,
+    );
+
+    if merged_entries.is_empty() {
+        return Ok(build_thread_list_empty_response());
+    }
+
+    let data: Vec<Value> = merged_entries
+        .iter()
+        .skip(page_offset)
+        .take(requested_limit)
+        .cloned()
+        .collect();
+    let next_cursor = if page_offset + data.len() < merged_entries.len() {
+        Some(build_unified_codex_cursor(page_offset + data.len()))
+    } else {
+        None
+    };
+    Ok(build_unified_codex_thread_response(
+        data,
+        next_cursor,
+        partial_source,
+    ))
+}
+
 async fn load_local_codex_session_summaries(
     state: &AppState,
     workspace_id: &str,
@@ -346,31 +571,6 @@ async fn load_local_codex_session_summaries(
         requested_limit,
     )
     .await
-}
-
-async fn build_local_codex_thread_fallback_response(
-    state: &AppState,
-    workspace_id: &str,
-    limit: Option<u32>,
-) -> Option<Value> {
-    let requested_limit = limit.unwrap_or(50).clamp(1, 200) as usize;
-    let fallback = load_local_codex_session_summaries(state, workspace_id, requested_limit).await;
-    let (workspace_path, sessions) = match fallback {
-        Ok(result) => result,
-        Err(error) => {
-            log::debug!(
-                "[list_threads] Local session fallback unavailable for {}: {}",
-                workspace_id,
-                error
-            );
-            return None;
-        }
-    };
-    Some(build_local_codex_thread_fallback_response_from_sessions(
-        &workspace_path,
-        &sessions,
-        requested_limit,
-    ))
 }
 
 async fn resolve_workspace_config_model(state: &AppState, workspace_id: &str) -> Option<String> {
@@ -642,17 +842,16 @@ pub(crate) async fn list_threads(
         .await;
     }
 
-    // Check if Codex session exists
-    // If not, try to create one (user may have installed Codex later)
-    // If that fails, return empty result (Codex not available)
+    // Check if Codex session exists.
+    // If not, try to create one. When warmup fails, we still fall back to
+    // local filesystem sessions so the history list remains complete.
     let has_session = {
         let sessions = state.sessions.lock().await;
         sessions.contains_key(&workspace_id)
     };
+    let mut live_enabled = has_session;
 
     if !has_session {
-        // Try to create a Codex session
-        // This handles the case where user installed Codex after creating the workspace
         let warmup = timeout(
             Duration::from_secs(4),
             ensure_codex_session(&workspace_id, &state, &app),
@@ -664,91 +863,27 @@ pub(crate) async fn list_threads(
                     "[list_threads] Codex session warmup timed out for workspace {}",
                     workspace_id
                 );
-                if cursor.is_none() {
-                    if let Some(fallback) =
-                        build_local_codex_thread_fallback_response(&state, &workspace_id, limit)
-                            .await
-                    {
-                        log::info!(
-                            "[list_threads] Using local session fallback after warmup timeout for workspace {}",
-                            workspace_id
-                        );
-                        return Ok(fallback);
-                    }
-                }
-                return Ok(build_thread_list_empty_response());
+                live_enabled = false;
             }
             Ok(Err(e)) => {
-                // Codex not available (not installed or other error)
-                // Return empty result - Claude sessions are fetched separately
                 log::debug!(
                     "[list_threads] Codex session creation failed for {}: {}",
                     workspace_id,
                     e
                 );
-                if cursor.is_none() {
-                    if let Some(fallback) =
-                        build_local_codex_thread_fallback_response(&state, &workspace_id, limit)
-                            .await
-                    {
-                        log::info!(
-                            "[list_threads] Using local session fallback after warmup failure for workspace {}",
-                            workspace_id
-                        );
-                        return Ok(fallback);
-                    }
-                }
-                return Ok(build_thread_list_empty_response());
+                live_enabled = false;
             }
             Ok(_) => {
                 log::info!(
                     "[list_threads] Created Codex session for workspace {}",
                     workspace_id
                 );
+                live_enabled = true;
             }
         }
     }
 
-    match codex_core::list_threads_core(
-        &state.sessions,
-        workspace_id.clone(),
-        cursor.clone(),
-        limit,
-    )
-    .await
-    {
-        Ok(response) => {
-            if cursor.is_none() && thread_list_response_is_empty(&response) {
-                if let Some(fallback) =
-                    build_local_codex_thread_fallback_response(&state, &workspace_id, limit).await
-                {
-                    if !thread_list_response_is_empty(&fallback) {
-                        log::info!(
-                            "[list_threads] Using local session fallback after empty list for workspace {}",
-                            workspace_id
-                        );
-                        return Ok(fallback);
-                    }
-                }
-            }
-            Ok(response)
-        }
-        Err(error) => {
-            if cursor.is_none() && error.contains("workspace not connected") {
-                if let Some(fallback) =
-                    build_local_codex_thread_fallback_response(&state, &workspace_id, limit).await
-                {
-                    log::info!(
-                        "[list_threads] Using local session fallback after list error for workspace {}",
-                        workspace_id
-                    );
-                    return Ok(fallback);
-                }
-                return Ok(build_thread_list_empty_response());
-            }
-            Err(error)
-        }
-    }
+    build_unified_codex_thread_page(&state, &workspace_id, cursor, limit, live_enabled).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -931,16 +1066,16 @@ pub(crate) async fn list_global_mcp_servers() -> Result<Vec<GlobalMcpServerEntry
         }
     }
 
-    let codemoss_config_path = home.join(".codemoss").join("config.json");
-    if codemoss_config_path.exists() {
-        match read_json_file(&codemoss_config_path)
-            .and_then(|root| parse_mcp_entries_from_json_value(&root, "codemoss_config"))
+    let ccgui_config_path = app_paths::config_file_path()?;
+    if ccgui_config_path.exists() {
+        match read_json_file(&ccgui_config_path)
+            .and_then(|root| parse_mcp_entries_from_json_value(&root, "ccgui_config"))
         {
             Ok(entries) => return Ok(entries),
             Err(error) => {
                 log::warn!(
                     "[list_global_mcp_servers] Failed to parse {}: {}",
-                    codemoss_config_path.display(),
+                    ccgui_config_path.display(),
                     error
                 );
             }
@@ -989,6 +1124,68 @@ pub(crate) async fn archive_thread(
     }
 
     codex_core::archive_thread_core(&state.sessions, workspace_id, thread_id).await
+}
+
+#[tauri::command]
+pub(crate) async fn delete_codex_session(
+    workspace_id: String,
+    session_id: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Value, String> {
+    if remote_backend::is_remote_mode(&*state).await {
+        return remote_backend::call_remote(
+            &*state,
+            app,
+            "delete_codex_session",
+            json!({ "workspaceId": workspace_id, "sessionId": session_id }),
+        )
+        .await;
+    }
+
+    let normalized_session_id = session_id.trim().to_string();
+    if normalized_session_id.is_empty() {
+        return Err("session_id is required".to_string());
+    }
+
+    let archive_result = codex_core::archive_thread_core(
+        &state.sessions,
+        workspace_id.clone(),
+        normalized_session_id.clone(),
+    )
+    .await;
+    if let Err(error) = &archive_result {
+        log::debug!(
+            "[delete_codex_session] Best-effort archive skipped for workspace {} session {}: {}",
+            workspace_id,
+            normalized_session_id,
+            error
+        );
+    }
+
+    let deleted_count = local_usage::delete_codex_session_for_workspace(
+        &state.workspaces,
+        &workspace_id,
+        &normalized_session_id,
+    )
+    .await?;
+
+    let session = {
+        let sessions = state.sessions.lock().await;
+        sessions.get(&workspace_id).cloned()
+    };
+    if let Some(session) = session {
+        session
+            .clear_thread_effective_mode(&normalized_session_id)
+            .await;
+    }
+
+    Ok(json!({
+        "deleted": deleted_count > 0,
+        "deletedCount": deleted_count,
+        "method": "filesystem",
+        "archivedBeforeDelete": archive_result.is_ok(),
+    }))
 }
 
 /// Ensure a Codex session exists for the workspace. If not, spawn one.
@@ -2415,13 +2612,13 @@ fn sanitize_run_worktree_name(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_local_codex_session_preview,
-        build_local_codex_thread_fallback_response_from_sessions, build_thread_list_empty_response,
+        build_local_codex_session_preview, build_thread_list_empty_response,
         merge_unified_codex_thread_entries, normalize_model_id,
         pick_model_from_model_list_response,
     };
     use crate::types::{LocalUsageSessionSummary, LocalUsageUsageData};
     use serde_json::json;
+    use std::collections::HashSet;
 
     #[test]
     fn normalize_model_id_trims_and_filters_empty() {
@@ -2483,54 +2680,6 @@ mod tests {
     }
 
     #[test]
-    fn build_local_codex_thread_fallback_response_maps_and_limits_entries() {
-        let sessions = vec![
-            LocalUsageSessionSummary {
-                session_id: "session-a".to_string(),
-                timestamp: 1_700_000_001_000,
-                model: "openai/gpt-5".to_string(),
-                usage: LocalUsageUsageData::default(),
-                cost: 0.0,
-                summary: Some("  hello world  ".to_string()),
-                source: Some("custom".to_string()),
-                provider: Some("openai".to_string()),
-            },
-            LocalUsageSessionSummary {
-                session_id: "session-b".to_string(),
-                timestamp: 1_700_000_002_000,
-                model: "openai/gpt-5-mini".to_string(),
-                usage: LocalUsageUsageData::default(),
-                cost: 0.0,
-                summary: None,
-                source: None,
-                provider: None,
-            },
-        ];
-
-        let response = build_local_codex_thread_fallback_response_from_sessions(
-            "/tmp/workspace",
-            &sessions,
-            1,
-        );
-        let data = response["result"]["data"]
-            .as_array()
-            .expect("fallback data array");
-
-        assert_eq!(data.len(), 1);
-        assert_eq!(data[0]["id"], "session-a");
-        assert_eq!(data[0]["preview"], "hello world");
-        assert_eq!(data[0]["title"], "hello world");
-        assert_eq!(data[0]["cwd"], "/tmp/workspace");
-        assert_eq!(data[0]["createdAt"], 1_700_000_001_000_i64);
-        assert_eq!(data[0]["updatedAt"], 1_700_000_001_000_i64);
-        assert_eq!(data[0]["localFallback"], true);
-        assert_eq!(data[0]["source"], "custom");
-        assert_eq!(data[0]["provider"], "openai");
-        assert_eq!(data[0]["sourceLabel"], "custom/openai");
-        assert!(response["result"]["nextCursor"].is_null());
-    }
-
-    #[test]
     fn merge_unified_codex_thread_entries_dedupes_and_keeps_metadata_stable() {
         let live_entries = vec![
             json!({
@@ -2555,6 +2704,7 @@ mod tests {
         let local_sessions = vec![
             LocalUsageSessionSummary {
                 session_id: "thread-dup".to_string(),
+                session_id_aliases: Vec::new(),
                 timestamp: 110,
                 model: "openai/gpt-5".to_string(),
                 usage: LocalUsageUsageData::default(),
@@ -2562,9 +2712,12 @@ mod tests {
                 summary: Some("local".to_string()),
                 source: Some("custom".to_string()),
                 provider: Some("openai".to_string()),
+                file_size_bytes: Some(4_096),
+                modified_lines: 0,
             },
             LocalUsageSessionSummary {
                 session_id: "thread-local".to_string(),
+                session_id_aliases: Vec::new(),
                 timestamp: 105,
                 model: "openai/gpt-5-mini".to_string(),
                 usage: LocalUsageUsageData::default(),
@@ -2572,22 +2725,35 @@ mod tests {
                 summary: Some("local-only".to_string()),
                 source: Some("project".to_string()),
                 provider: Some("openai".to_string()),
+                file_size_bytes: Some(8_192),
+                modified_lines: 0,
             },
         ];
 
-        let merged =
-            merge_unified_codex_thread_entries(live_entries, &local_sessions, "/tmp/workspace", 10);
+        let workspace_session_ids: HashSet<String> = local_sessions
+            .iter()
+            .flat_map(super::codex_session_identifier_candidates)
+            .collect();
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &local_sessions,
+            &workspace_session_ids,
+            "/tmp/workspace",
+            10,
+        );
 
         assert_eq!(merged.len(), 3);
         assert_eq!(merged[0]["id"], "thread-dup");
         assert_eq!(merged[0]["updatedAt"], 110);
         assert_eq!(merged[0]["preview"], "remote");
+        assert_eq!(merged[0]["sizeBytes"], 4_096);
         assert_eq!(merged[0]["source"], "custom");
         assert_eq!(merged[0]["provider"], "openai");
         assert_eq!(merged[0]["sourceLabel"], "custom/openai");
 
         assert_eq!(merged[1]["id"], "thread-local");
         assert_eq!(merged[1]["localFallback"], true);
+        assert_eq!(merged[1]["sizeBytes"], 8_192);
         assert_eq!(merged[1]["sourceLabel"], "project/openai");
 
         assert_eq!(merged[2]["id"], "thread-live");
@@ -2605,6 +2771,7 @@ mod tests {
         })];
         let local_sessions = vec![LocalUsageSessionSummary {
             session_id: "thread-dup".to_string(),
+            session_id_aliases: Vec::new(),
             timestamp: 110,
             model: "openai/gpt-5".to_string(),
             usage: LocalUsageUsageData::default(),
@@ -2612,12 +2779,150 @@ mod tests {
             summary: Some("local".to_string()),
             source: Some("mossx".to_string()),
             provider: Some("openai".to_string()),
+            file_size_bytes: Some(1_024),
+            modified_lines: 0,
         }];
 
-        let merged =
-            merge_unified_codex_thread_entries(live_entries, &local_sessions, "/tmp/workspace", 10);
+        let workspace_session_ids: HashSet<String> = local_sessions
+            .iter()
+            .flat_map(super::codex_session_identifier_candidates)
+            .collect();
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &local_sessions,
+            &workspace_session_ids,
+            "/tmp/workspace",
+            10,
+        );
         assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["sizeBytes"], 1_024);
         assert_eq!(merged[0]["source"], "mossx");
         assert_eq!(merged[0]["sourceLabel"], "mossx/openai");
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_matches_session_id_aliases() {
+        let live_entries = vec![json!({
+            "id": "rollout-2026-04-10T10-00-00-session-123",
+            "preview": "remote",
+            "updatedAt": 90,
+            "createdAt": 90
+        })];
+        let local_sessions = vec![LocalUsageSessionSummary {
+            session_id: "session-123".to_string(),
+            session_id_aliases: vec!["rollout-2026-04-10T10-00-00-session-123".to_string()],
+            timestamp: 110,
+            model: "openai/gpt-5".to_string(),
+            usage: LocalUsageUsageData::default(),
+            cost: 0.0,
+            summary: Some("local".to_string()),
+            source: Some("cli".to_string()),
+            provider: Some("openai".to_string()),
+            file_size_bytes: Some(2_048),
+            modified_lines: 0,
+        }];
+
+        let workspace_session_ids: HashSet<String> = local_sessions
+            .iter()
+            .flat_map(super::codex_session_identifier_candidates)
+            .collect();
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &local_sessions,
+            &workspace_session_ids,
+            "/tmp/workspace",
+            10,
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["id"], "rollout-2026-04-10T10-00-00-session-123");
+        assert_eq!(merged[0]["sizeBytes"], 2_048);
+        assert_eq!(merged[0]["source"], "cli");
+        assert_eq!(merged[0]["sourceLabel"], "cli/openai");
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_does_not_backfill_cwd_for_unmapped_live_rows() {
+        let live_entries = vec![json!({
+            "id": "thread-live",
+            "preview": "remote",
+            "updatedAt": 90,
+            "createdAt": 90
+        })];
+
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &[],
+            &HashSet::new(),
+            "/tmp/workspace",
+            10,
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["id"], "thread-live");
+        assert!(merged[0].get("cwd").is_none() || merged[0]["cwd"].is_null());
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_backfills_cwd_from_cached_workspace_ids() {
+        let live_entries = vec![json!({
+            "id": "thread-live",
+            "preview": "remote",
+            "updatedAt": 90,
+            "createdAt": 90
+        })];
+        let mut workspace_session_ids = HashSet::new();
+        workspace_session_ids.insert("thread-live".to_string());
+
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &[],
+            &workspace_session_ids,
+            "/tmp/workspace",
+            10,
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["id"], "thread-live");
+        assert_eq!(merged[0]["cwd"], "/tmp/workspace");
+    }
+
+    #[test]
+    fn merge_unified_codex_thread_entries_backfills_workspace_cwd_for_mapped_live_rows() {
+        let live_entries = vec![json!({
+            "id": "rollout-2026-04-10T10-00-00-session-123",
+            "preview": "remote",
+            "updatedAt": 90,
+            "createdAt": 90
+        })];
+        let local_sessions = vec![LocalUsageSessionSummary {
+            session_id: "session-123".to_string(),
+            session_id_aliases: vec!["rollout-2026-04-10T10-00-00-session-123".to_string()],
+            timestamp: 110,
+            model: "openai/gpt-5".to_string(),
+            usage: LocalUsageUsageData::default(),
+            cost: 0.0,
+            summary: Some("local".to_string()),
+            source: Some("cli".to_string()),
+            provider: Some("openai".to_string()),
+            file_size_bytes: Some(2_048),
+            modified_lines: 0,
+        }];
+
+        let workspace_session_ids: HashSet<String> = local_sessions
+            .iter()
+            .flat_map(super::codex_session_identifier_candidates)
+            .collect();
+        let merged = merge_unified_codex_thread_entries(
+            live_entries,
+            &local_sessions,
+            &workspace_session_ids,
+            "/tmp/workspace",
+            10,
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0]["id"], "rollout-2026-04-10T10-00-00-session-123");
+        assert_eq!(merged[0]["cwd"], "/tmp/workspace");
     }
 }

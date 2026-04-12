@@ -111,12 +111,16 @@ export type ConversationItem =
       output?: string;
       durationMs?: number | null;
       changes?: { path: string; kind?: string; diff?: string }[];
+      senderThreadId?: string;
+      receiverThreadIds?: string[];
+      agentStatus?: Record<string, { status?: string } | string>;
     };
 
 export type ThreadSummary = {
   id: string;
   name: string;
   updatedAt: number;
+  sizeBytes?: number;
   engineSource?: "codex" | "claude" | "gemini" | "opencode";
   source?: string;
   provider?: string;
@@ -137,6 +141,8 @@ export type AppMode = "chat" | "kanban" | "gitHistory";
 
 export type ComposerEditorPreset = "default" | "helpful" | "smart";
 export type ComposerSendShortcut = "enter" | "cmdEnter";
+export type CanvasWidthMode = "narrow" | "wide";
+export type LayoutMode = "default" | "swapped";
 
 export type ComposerEditorSettings = {
   preset: ComposerEditorPreset;
@@ -190,6 +196,8 @@ export type AppSettings = {
   lastComposerReasoningEffort: string | null;
   uiScale: number;
   theme: ThemePreference;
+  canvasWidthMode: CanvasWidthMode;
+  layoutMode?: LayoutMode;
   userMsgColor: string;
   usageShowRemaining: boolean;
   showMessageAnchors: boolean;
@@ -632,11 +640,16 @@ export type LocalUsageUsageData = {
 
 export type LocalUsageSessionSummary = {
   sessionId: string;
+  sessionIdAliases?: string[];
   timestamp: number;
   model: string;
   usage: LocalUsageUsageData;
   cost: number;
   summary?: string | null;
+  source?: string | null;
+  provider?: string | null;
+  fileSizeBytes?: number;
+  modifiedLines?: number;
 };
 
 export type LocalUsageDailyUsage = {
@@ -656,6 +669,16 @@ export type LocalUsageModelUsage = {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   sessionCount: number;
+};
+
+export type LocalUsageEngineUsage = {
+  engine: string;
+  count: number;
+};
+
+export type LocalUsageDailyCodeChange = {
+  date: string;
+  modifiedLines: number;
 };
 
 export type LocalUsageWeekData = {
@@ -686,6 +709,10 @@ export type LocalUsageStatistics = {
   dailyUsage: LocalUsageDailyUsage[];
   weeklyComparison: LocalUsageWeeklyComparison;
   byModel: LocalUsageModelUsage[];
+  totalEngineUsageCount: number;
+  engineUsage: LocalUsageEngineUsage[];
+  aiCodeModifiedLines: number;
+  dailyCodeChanges: LocalUsageDailyCodeChange[];
   lastUpdated: number;
 };
 

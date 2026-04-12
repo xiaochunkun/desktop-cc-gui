@@ -9,6 +9,7 @@ import {
 
 const mockState = vi.hoisted(() => ({
   latestProps: null as Record<string, unknown> | null,
+  renderCount: 0,
   getClaudeProviders: vi.fn(),
   getClaudeAlwaysThinkingEnabled: vi.fn(),
   setClaudeAlwaysThinkingEnabled: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('./ChatInputBox', async () => {
   const React = await import('react');
   const MockChatInputBox = React.forwardRef((props: Record<string, unknown>, ref) => {
     mockState.latestProps = props;
+    mockState.renderCount += 1;
     React.useImperativeHandle(ref, () => ({
       getValue: () => '',
       setValue: () => {},
@@ -76,6 +78,7 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
 
   beforeEach(() => {
     mockState.latestProps = null;
+    mockState.renderCount = 0;
     mockState.getClaudeProviders.mockReset().mockResolvedValue([
       {
         id: 'provider-1',
@@ -128,7 +131,27 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     act(() => {
       latest.onStreamingEnabledChange?.(false);
     });
-    expect(window.localStorage.getItem('mossx.composer.streaming-enabled')).toBe('0');
+    expect(window.localStorage.getItem('ccgui.composer.streaming-enabled')).toBe('0');
+  });
+
+  it('avoids rerendering ChatInputBox when adapter props stay referentially stable', async () => {
+    const stableProps: ComponentProps<typeof ChatInputBoxAdapter> = {
+      text: '',
+      isProcessing: false,
+      canStop: false,
+      selectedModelId: 'claude-sonnet-4-6',
+      onSend: () => {},
+      onStop: () => {},
+      onTextChange: () => {},
+      selectedEngine: 'claude',
+    };
+
+    const view = render(<ChatInputBoxAdapter {...stableProps} />);
+    await waitFor(() => expect(mockState.latestProps).toBeTruthy());
+    expect(mockState.renderCount).toBe(1);
+
+    view.rerender(<ChatInputBoxAdapter {...stableProps} />);
+    expect(mockState.renderCount).toBe(1);
   });
 
   it('uses external thinking callback when supplied', async () => {
@@ -663,7 +686,7 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     renderAdapter({
       prompts: [
         {
-          path: '/tmp/workspace/.mossx/prompts/review.md',
+          path: '/tmp/workspace/.ccgui/prompts/review.md',
           name: 'review',
           content: '请审查这段代码',
           description: '代码评审',
@@ -710,15 +733,15 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
   });
 
   it('sorts prompt completion by usage heat', async () => {
-    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
-    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
-    recordPromptUsage('/tmp/workspace/.mossx/prompts/review.md');
-    recordPromptUsage('/tmp/workspace/.mossx/prompts/fix.md');
+    recordPromptUsage('/tmp/workspace/.ccgui/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.ccgui/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.ccgui/prompts/review.md');
+    recordPromptUsage('/tmp/workspace/.ccgui/prompts/fix.md');
 
     renderAdapter({
       prompts: [
         {
-          path: '/tmp/workspace/.mossx/prompts/fix.md',
+          path: '/tmp/workspace/.ccgui/prompts/fix.md',
           name: 'fix',
           content: '帮我修复问题',
           description: '修复',
@@ -726,7 +749,7 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
           scope: 'workspace',
         },
         {
-          path: '/tmp/workspace/.mossx/prompts/review.md',
+          path: '/tmp/workspace/.ccgui/prompts/review.md',
           name: 'review',
           content: '请审查这段代码',
           description: '代码评审',
@@ -773,7 +796,7 @@ describe('ChatInputBoxAdapter toggle bridge', () => {
     renderAdapter({
       prompts: [
         {
-          path: '/tmp/workspace/.mossx/prompts/deploy.md',
+          path: '/tmp/workspace/.ccgui/prompts/deploy.md',
           name: 'deploy',
           content: '帮我生成部署步骤',
           description: '部署流程',

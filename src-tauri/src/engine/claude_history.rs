@@ -23,6 +23,8 @@ pub struct ClaudeSessionSummary {
     pub updated_at: i64,
     pub created_at: i64,
     pub message_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_size_bytes: Option<u64>,
 }
 
 /// Encode a filesystem path to Claude's project directory name.
@@ -265,6 +267,7 @@ fn truncate(s: &str, max_chars: usize) -> String {
 /// Reads the file line-by-line to find the first user message and track timestamps.
 async fn scan_session_file(path: &Path) -> Option<ClaudeSessionSummary> {
     let file = fs::File::open(path).await.ok()?;
+    let file_size_bytes = file.metadata().await.ok().map(|metadata| metadata.len());
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 
@@ -350,6 +353,7 @@ async fn scan_session_file(path: &Path) -> Option<ClaudeSessionSummary> {
         updated_at: last_timestamp.unwrap_or(now_ms),
         created_at: first_timestamp.unwrap_or(now_ms),
         message_count,
+        file_size_bytes,
     })
 }
 
@@ -501,6 +505,14 @@ pub async fn load_claude_session(
     session_id: &str,
 ) -> Result<ClaudeSessionLoadResult, String> {
     let base_dir = claude_projects_dir().ok_or("Cannot determine home directory")?;
+    load_claude_session_from_base_dir(&base_dir, workspace_path, session_id).await
+}
+
+async fn load_claude_session_from_base_dir(
+    base_dir: &Path,
+    workspace_path: &Path,
+    session_id: &str,
+) -> Result<ClaudeSessionLoadResult, String> {
     let project_dirs = claude_project_dirs_for_path(&base_dir, workspace_path);
     let mut session_file: Option<PathBuf> = None;
 
@@ -624,10 +636,11 @@ pub async fn load_claude_session(
                                 }
                             }
                         }
-                        "thinking" => {
+                        "thinking" | "reasoning" => {
                             // Extract thinking/reasoning content
                             let thinking_text = block
                                 .get("thinking")
+                                .or_else(|| block.get("reasoning"))
                                 .or_else(|| block.get("text"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
@@ -913,8 +926,12 @@ pub async fn delete_claude_session(workspace_path: &Path, session_id: &str) -> R
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_images_from_content, is_encoded_workspace_prefix_match};
+    use super::{
+        extract_images_from_content, is_encoded_workspace_prefix_match,
+        load_claude_session_from_base_dir,
+    };
     use serde_json::json;
+    use uuid::Uuid;
 
     #[test]
     fn extract_images_from_content_supports_base64_and_url() {
@@ -977,5 +994,69 @@ mod tests {
             "-Users-chenxiangning-code-AI-github-codegen",
             "-Users-chenxiangning-code-AI-github-codeg"
         ));
+    }
+
+    #[tokio::test]
+    async fn load_claude_session_parses_reasoning_blocks() {
+        let unique = Uuid::new_v4().to_string();
+        let temp_root = std::env::temp_dir().join(format!("ccgui-claude-history-{}", unique));
+        let base_dir = temp_root.join("claude-projects");
+        let workspace_path = temp_root.join("workspace");
+        std::fs::create_dir_all(&workspace_path).expect("create workspace path");
+        std::fs::create_dir_all(&base_dir).expect("create base dir");
+
+        let encoded_workspace = workspace_path
+            .to_string_lossy()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>();
+        let project_dir = base_dir.join(encoded_workspace);
+        std::fs::create_dir_all(&project_dir).expect("create project dir");
+
+        let session_id = format!("reasoning-block-{}", unique);
+        let session_path = project_dir.join(format!("{}.jsonl", session_id));
+        let line = json!({
+            "uuid": "assistant-turn-1",
+            "timestamp": "2026-04-12T12:00:00.000Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "reasoning",
+                        "reasoning": "Inspect runtime state and compare the latest snapshots"
+                    },
+                    {
+                        "type": "text",
+                        "text": "Done"
+                    }
+                ]
+            }
+        });
+        std::fs::write(&session_path, format!("{}\n", line)).expect("write session");
+
+        let result = load_claude_session_from_base_dir(&base_dir, &workspace_path, &session_id)
+            .await
+            .expect("load session");
+        let reasoning = result
+            .messages
+            .iter()
+            .find(|message| message.kind == "reasoning")
+            .expect("reasoning message");
+        assert_eq!(
+            reasoning.text,
+            "Inspect runtime state and compare the latest snapshots"
+        );
+        assert!(result
+            .messages
+            .iter()
+            .any(|message| message.kind == "message" && message.text == "Done"));
+
+        let _ = std::fs::remove_dir_all(&temp_root);
     }
 }

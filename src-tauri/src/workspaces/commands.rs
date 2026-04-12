@@ -3,12 +3,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{AppHandle, Manager, State};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use super::external_changes::{
     clear_detached_external_change_monitor_inner, configure_detached_external_change_monitor_inner,
@@ -37,6 +37,7 @@ use super::worktree::{
     unique_worktree_path_for_rename,
 };
 
+use crate::app_paths;
 use crate::backend::app_server::WorkspaceSession;
 use crate::codex::args::resolve_workspace_codex_args;
 use crate::codex::home::{resolve_default_codex_home, resolve_workspace_codex_home};
@@ -353,11 +354,7 @@ async fn allowed_image_preview_roots(
         roots.push(PathBuf::from(parent_path));
     }
     roots.push(app_data_dir_for_state(state)?.join("workspaces"));
-    if let Some(home_dir) = dirs::home_dir() {
-        roots.push(home_dir.join(".codemoss").join("workspace"));
-        roots.push(home_dir.join(".mossx").join("workspace"));
-        roots.push(home_dir.join(".moss-x").join("workspace"));
-    }
+    roots.extend(app_paths::workspace_root_candidates()?);
 
     let mut canonical_roots = roots
         .into_iter()
@@ -398,8 +395,8 @@ pub(crate) async fn read_local_image_data_url(
     if remote_backend::is_remote_mode(&*state).await {
         return Err("read_local_image_data_url is not supported in remote mode.".to_string());
     }
-    let absolute_path = normalize_image_local_path(&path)
-        .ok_or_else(|| "Invalid image path.".to_string())?;
+    let absolute_path =
+        normalize_image_local_path(&path).ok_or_else(|| "Invalid image path.".to_string())?;
     if !absolute_path.is_absolute() {
         return Err("Image path must be absolute.".to_string());
     }
@@ -448,10 +445,7 @@ mod image_preview_policy_tests {
     fn path_must_be_under_allowed_roots() {
         let root = PathBuf::from("/tmp/allowed");
         let roots = vec![root.clone()];
-        assert!(is_path_under_allowed_roots(
-            &root.join("a.png"),
-            &roots,
-        ));
+        assert!(is_path_under_allowed_roots(&root.join("a.png"), &roots,));
         assert!(!is_path_under_allowed_roots(
             &PathBuf::from("/tmp/other/a.png"),
             &roots,
@@ -1929,7 +1923,7 @@ pub(crate) async fn open_workspace_in(
     ))
 }
 
-const DEFAULT_MACOS_APP_NAME: &str = "CodeMoss";
+const DEFAULT_MACOS_APP_NAME: &str = "ccgui";
 
 fn normalize_new_window_path(path: Option<String>) -> Option<String> {
     path.as_deref()
@@ -2183,7 +2177,7 @@ mod tests {
     #[test]
     fn build_macos_new_window_open_args_uses_workspace_path_when_provided() {
         let args = build_macos_new_window_open_args(
-            Some(Path::new("/Applications/CodeMoss.app")),
+            Some(Path::new("/Applications/ccgui.app")),
             Some("/tmp/project"),
         );
         assert_eq!(
@@ -2191,7 +2185,7 @@ mod tests {
             vec![
                 "-n".to_string(),
                 "-a".to_string(),
-                "/Applications/CodeMoss.app".to_string(),
+                "/Applications/ccgui.app".to_string(),
                 "/tmp/project".to_string(),
             ]
         );
