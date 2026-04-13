@@ -573,7 +573,7 @@ export const ContextBar: React.FC<ContextBarProps> = memo(({
             disabled={!hasMessages}
             data-tooltip={t('rewind.tooltip')}
           >
-            <span className="codicon codicon-discard" />
+            <span className="codicon codicon-history" />
             <span className="context-tool-label">{t('rewind.label')}</span>
           </button>
         )}
