@@ -2325,7 +2325,7 @@ export function SettingsView({
                   <button
                     type="button"
                     className="ghost"
-                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/ccgui")}
+                    onClick={() => void openUrl("https://github.com/zhukunpenglinyutong/desktop-cc-gui")}
                   >
                     {t("about.github")}
                   </button>
