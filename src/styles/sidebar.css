@@ -1076,30 +1076,7 @@
 .workspace-folder-btn.is-session-running,
 .workspace-folder-btn.is-session-running:hover,
 .workspace-folder-btn.is-session-running[aria-expanded="true"] {
-  color: #10b981;
-  animation: sidebar-workspace-folder-breathe 1.45s ease-in-out infinite;
-}
-
-.workspace-folder-btn.is-session-running svg {
-  filter: drop-shadow(0 0 5px color-mix(in oklab, #10b981 45%, transparent));
-}
-
-@keyframes sidebar-workspace-folder-breathe {
-  0%,
-  100% {
-    opacity: 0.72;
-    transform: scale(1);
-  }
-
-  45% {
-    opacity: 1;
-    transform: scale(1.08);
-  }
-
-  70% {
-    opacity: 0.84;
-    transform: scale(1.02);
-  }
+  color: inherit;
 }
 
 .workspace-folder-btn .codicon {
@@ -1109,13 +1086,13 @@
 .default-workspace-folder-icon {
   width: 15px;
   height: 15px;
-  color: #2563eb;
+  color: color-mix(in srgb, var(--text-muted) 76%, var(--text-strong) 24%);
   stroke-width: 2.2;
 }
 
 .workspace-row.active .default-workspace-folder-icon,
 .workspace-row.context-active .default-workspace-folder-icon {
-  color: #1d4ed8;
+  color: color-mix(in srgb, var(--text-muted) 32%, var(--text-strong) 68%);
 }
 
 .default-workspace-badge {
@@ -1671,17 +1648,15 @@
 .worktree-node-icon {
   width: 12px;
   height: 12px;
-  color: color-mix(in srgb, var(--text-muted) 70%, var(--worktree-accent));
+  color: color-mix(in srgb, var(--text-muted) 78%, var(--text-strong) 22%);
   opacity: 0.96;
   flex-shrink: 0;
   margin-left: 1px;
 }
 
 .worktree-node-icon.is-session-running {
-  color: #10b981;
+  color: inherit;
   opacity: 1;
-  animation: sidebar-workspace-folder-breathe 1.45s ease-in-out infinite;
-  filter: drop-shadow(0 0 5px color-mix(in oklab, #10b981 45%, transparent));
 }
 
 .worktree-row:hover {
@@ -1693,7 +1668,7 @@
 .worktree-row:hover .worktree-node-icon,
 .worktree-row.active .worktree-node-icon,
 .worktree-row.context-active .worktree-node-icon {
-  color: color-mix(in srgb, var(--text-muted) 88%, var(--worktree-accent));
+  color: color-mix(in srgb, var(--text-muted) 36%, var(--text-strong) 64%);
   opacity: 1;
 }
 
@@ -2127,6 +2102,15 @@
 
 .thread-engine-badge.is-processing {
   color: #ff9f43;
+  opacity: 1;
+  filter: none;
+}
+
+.thread-engine-badge.thread-engine-codex,
+.thread-row:hover .thread-engine-badge.thread-engine-codex,
+.thread-row.active .thread-engine-badge.thread-engine-codex,
+.thread-engine-badge.thread-engine-codex.is-processing {
+  color: var(--text-strong);
   opacity: 1;
   filter: none;
 }

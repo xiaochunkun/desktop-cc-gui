@@ -295,7 +295,7 @@ export function Sidebar({
       case "engine-claude":
         return <EngineIcon engine="claude" size={14} />;
       case "engine-codex":
-        return <EngineIcon engine="codex" size={14} style={{ color: "#10a37f" }} />;
+        return <EngineIcon engine="codex" size={14} />;
       case "engine-opencode":
         return <EngineIcon engine="opencode" size={14} style={{ color: "#3b82f6" }} />;
       case "engine-gemini":
