@@ -17,7 +17,7 @@
 
 ### Batch C [P1] Phase 2/3 逐步开放
 
-- [ ] C.1 [依赖:Batch B][文件:`src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx`][目标: approval bridge 稳定后开放 Claude `default`][完成定义: `default` 在 Claude 下可选且审批请求可达]
+- [x] C.1 [依赖:B.0][文件:`src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx`,`src/i18n/locales/zh.part2.ts`,`src/i18n/locales/en.part2.ts`][目标: 以 preview 形态开放 Claude `default`][完成定义: `default` 在 Claude 下可选，文案明确 preview 语义，命中已识别退化路径时 GUI 可解释]
 - [ ] C.2 [依赖:Batch B][文件:`src-tauri/src/engine/claude.rs`,`src/i18n/locales/zh.part2.ts`,`src/i18n/locales/en.part2.ts`][目标: 校验并对齐 `acceptEdits` 的真实 CLI 语义][完成定义: 文案与 CLI 实际行为一致]
 - [ ] C.3 [依赖:C.2][文件:`src/features/composer/components/ChatInputBox/selectors/ModeSelect.tsx`,`src/services/tauri.test.ts`][目标: 在语义确认后开放 Claude `acceptEdits`][完成定义: `acceptEdits` 开放不会破坏现有审批/执行语义]
 

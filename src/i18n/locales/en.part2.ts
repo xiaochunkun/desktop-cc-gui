@@ -1698,9 +1698,9 @@ const enPart2 = {
 
   claudeModes: {
     default: {
-      label: "Suggest Mode",
-      tooltip: "Claude Code manual approval mode. Not enabled in the current rollout phase.",
-      description: "This mode stays unavailable until the Claude approval bridge is fully wired.",
+      label: "Suggest Mode (Preview)",
+      tooltip: "Claude Code preview approval mode. Some flows may still degrade while the full approval bridge is being completed.",
+      description: "Now available as a preview for validating Claude's default permission flow. If a degraded path is hit, the UI should guide users back to Plan mode.",
     },
     plan: {
       label: "Plan Mode",

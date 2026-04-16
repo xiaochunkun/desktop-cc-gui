@@ -43,14 +43,14 @@
 **Decision**
 
 - Phase 1：开放 `plan` 与 `full-access`
-- Phase 2：补齐 Claude approval bridge 后开放 `default`
+- Phase 2：先以 preview 形态开放 `default`，并依赖 degraded-path diagnostics 辅助验证；approval bridge 完整后再转为稳定开放
 - Phase 3：在 `default` 稳定后开放 `acceptEdits`
 
 **Rationale**
 
 - `plan` 与 `full-access` 不依赖审批事件桥，当前 runtime 已有直接 CLI flag 映射。
 - `default` 与 `acceptEdits` 都依赖 Claude 在需要批准时能正确进入现有 approval 流程；当前这条链路未完整验证。
-- 先开放低歧义档位，可以尽快让用户摆脱“只有全自动”这一产品硬伤，同时避免把半成品权限模式暴露给外部用户。
+- 但 `default` 至少已经有可解释的 degraded-path diagnostic，可作为 preview 先开放给验证用户；`acceptEdits` 风险仍更高，继续后置。
 
 **Alternatives considered**
 
@@ -110,12 +110,13 @@
 **Decision**
 
 - 在未确认 Claude CLI 有稳定结构化 approval signal 之前，不提前开放 `default`。
+- 在未确认 Claude CLI 有稳定结构化 approval signal 之前，`default` 只能以 preview 形态开放。
 - 若 Claude 在 `code/default` 语义下对 `AskUserQuestion` 直接返回 `permission denied`，runtime 要把它降级映射成现有 `collaboration/modeBlocked` 提示。
 
 **Rationale**
 
 - 当前本地样本已证明 Claude 可能出现 `AskUserQuestion tool permission denied`，而不是 `approval/request`。
-- 用户可接受“暂时不开 default”，但不可接受“看起来支持、实际静默失败”。
+- 用户可以接受“preview 且仍有退化”，但不可接受“看起来支持、实际静默失败”。
 - 先把 denial 解释清楚，可以降低排障成本，并为后续继续调查真实 approval shape 留出空间。
 
 **Alternatives considered**

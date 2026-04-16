@@ -43,7 +43,11 @@ export const ModeSelect = ({ value, onChange, provider }: ModeSelectProps) => {
     }
     if (provider === 'claude') {
       return AVAILABLE_MODES.map((mode) => {
-        if (mode.id === 'plan' || mode.id === 'bypassPermissions') {
+        if (
+          mode.id === 'default' ||
+          mode.id === 'plan' ||
+          mode.id === 'bypassPermissions'
+        ) {
           return { ...mode, disabled: false };
         }
         return { ...mode, disabled: true };

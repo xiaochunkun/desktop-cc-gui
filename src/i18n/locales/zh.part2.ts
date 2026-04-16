@@ -1671,9 +1671,9 @@ const zhPart2 = {
 
   claudeModes: {
     default: {
-      label: "建议模式",
-      tooltip: "Claude Code 手动审批模式。当前阶段暂未开放。",
-      description: "需要完整接入审批链后再开放，当前阶段暂不可选。",
+      label: "建议模式（预览）",
+      tooltip: "Claude Code 预览审批模式。部分场景仍可能退化，完整审批桥仍在补齐。",
+      description: "现已开放预览，用于验证 Claude 默认权限流；若命中退化路径，界面会提示切换到 Plan 模式。",
     },
     plan: {
       label: "规划模式",

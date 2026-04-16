@@ -4,10 +4,10 @@
 
 The system MUST expose Claude Code modes according to an explicit phased rollout policy rather than enabling all defined modes at once.
 
-#### Scenario: phase one exposes only plan and full access
-- **WHEN** the active provider is `Claude Code` and rollout is at Phase 1
-- **THEN** UI MUST allow selecting `plan` and `bypassPermissions`
-- **AND** UI MUST NOT present `default` or `acceptEdits` as available modes
+#### Scenario: preview rollout exposes default plan and full access
+- **WHEN** the active provider is `Claude Code` and rollout has advanced past the initial safe-only phase
+- **THEN** UI MUST allow selecting `default`, `plan`, and `bypassPermissions`
+- **AND** UI MUST continue keeping `acceptEdits` unavailable until its semantics are verified
 
 #### Scenario: later phases may expand availability without changing mode ids
 - **WHEN** rollout advances beyond Phase 1
@@ -49,10 +49,11 @@ Claude runtime MUST map each enabled access mode to a deterministic Claude CLI p
 
 Modes that rely on runtime approval interaction MUST NOT be exposed as available until Claude approval requests can traverse the existing approval flow end-to-end.
 
-#### Scenario: default mode remains unavailable before approval bridge is ready
-- **WHEN** Claude approval request bridging is incomplete
-- **THEN** the system MUST keep Claude `default` mode unavailable to ordinary users
-- **AND** it MUST NOT advertise manual approval behavior as working
+#### Scenario: default preview can open before full approval bridge is ready
+- **WHEN** Claude approval request bridging is still incomplete but degraded paths are diagnosable
+- **THEN** the system MAY expose Claude `default` mode as a preview
+- **AND** user-facing copy MUST state that some approval flows can still degrade
+- **AND** degraded permission failures MUST surface a recoverable diagnostic instead of silently failing
 
 #### Scenario: accept edits remains unavailable before semantics are verified
 - **WHEN** Claude `acceptEdits` semantics have not been verified against current CLI behavior

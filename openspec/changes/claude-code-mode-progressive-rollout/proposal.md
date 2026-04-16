@@ -33,12 +33,12 @@
 - 移除当前产品层面对 `Claude Code` 模式的强制 `full-access` 锁定，恢复模式选择向 runtime 的真实透传。
 - 将 `Claude Code` 模式开放定义为三阶段：
   - Phase 1：开放 `plan` 和 `full-access`，保持 `default` / `acceptEdits` 禁用。
-  - Phase 2：补齐 Claude 审批请求到现有前端 approval 流程的桥接，开放 `default`。
+- Phase 2：先以 preview 形态开放 `default`，复用已落地的 degraded-path diagnostics；待 Claude 审批请求真正桥接到现有前端 approval 流程后，再转为稳定开放。
   - Phase 3：在 `default` 稳定后开放 `acceptEdits`，并验证“自动文件编辑 + 命令审批”的语义与 Claude CLI 一致。
 - 新增对 Claude 模式可用性的显式产品规则：
   - `plan` 必须映射到只读执行。
   - `full-access` 必须映射到跳过权限检查。
-  - `default` 与 `acceptEdits` 在审批桥未完成前不得对用户宣称可用。
+- `default` 可以在文案明确标注 preview 的前提下先行开放，但不得宣称审批桥已经完整；`acceptEdits` 在审批桥未完成前仍不得开放。
 - 调整模式选择器的 provider-specific 可选策略，不再把 Claude 非 `bypassPermissions` 模式一律置灰。
 - 为 Claude 模式开放增加跨层验证门禁：
   - UI mode -> frontend access mode
