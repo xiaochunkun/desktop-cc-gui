@@ -7,6 +7,8 @@ description: "Records completed work progress to .trellis/workspace/ journal fil
 
 **Do NOT run `git commit` directly** — the scripts below handle their own commits for `.trellis/` metadata. You only need to read git history (`git log`, `git status`, `git diff`) and run the Python scripts.
 
+**Portability rule**: Run all commands from the repository root with repo-relative paths (`./.trellis/scripts/...`). Never hardcode user names, absolute paths, local home directories, or machine-specific workspace paths. The active developer is resolved from `.trellis/.developer`; if it is missing, ask the collaborator for a developer id before running `init_developer.py`.
+
 ---
 
 ## Record Work Progress
@@ -14,6 +16,13 @@ description: "Records completed work progress to .trellis/workspace/ journal fil
 ### Step 1: Get Context & Check Tasks
 
 ```bash
+python3 ./.trellis/scripts/get_context.py --mode record
+```
+
+If this reports that the developer is not initialized, stop and ask the collaborator for the developer id, then run:
+
+```bash
+python3 ./.trellis/scripts/init_developer.py <developer-id>
 python3 ./.trellis/scripts/get_context.py --mode record
 ```
 
@@ -54,6 +63,15 @@ EOF
 - [OK] Auto-detects Branch context (`--branch` override; otherwise Branch = task.json -> current git branch; missing values are omitted gracefully)
 - [OK] Updates index.md (Total Sessions +1, Last Active, line stats, history)
 - [OK] Auto-commits .trellis/workspace and .trellis/tasks changes
+
+After running the script, verify with:
+
+```bash
+git log -1 --oneline
+git status --short
+```
+
+Report both the code commit hash and the Trellis record commit hash. If `.trellis/workspace` or `.trellis/tasks` still has unstaged/uncommitted changes, report the exact blocker instead of claiming the session was recorded.
 
 ---
 

@@ -34,19 +34,26 @@
 ### Batch E [P1] 后续阶段
 
 - [ ] E.1 继续收敛 Claude 原生命令审批 shape，避免非文件工具仍退化
-- [ ] E.2 校验并对齐 `acceptEdits` 的真实 CLI 语义
+  - [x] E.1.a 已识别的 command execution / shell / native command denial 先统一映射到 `modeBlocked` 诊断链，并补齐工具名与安全阻塞文案变体识别
+  - [x] E.1.b 补齐嵌套 `toolUseResult` / `tool_use_result` error payload、顶层 string error 与缺失 `is_error` 标记时的 shell/native command permission shape 识别
+  - [ ] E.1.c 评估哪些非文件工具可以安全进入下一阶段 synthetic bridge
+    - 当前评估见 `openspec/docs/claude-mode-rollout-non-file-approval-bridge-evaluation-2026-04-17.md`
+    - 当前结论：generic `Bash/shell/native command` 不建议进入 bridge；下一阶段优先扩展 `Edit/Rewrite/MultiEdit/NotebookEdit` 这类结构化 file-change tool 的本地 apply
+- [x] E.2 校验并对齐 `acceptEdits` 的真实 CLI 语义
 - [ ] E.3 在语义确认后开放 Claude `acceptEdits`
 
 ## 1. 验证门禁
 
 - [x] V.1 `npm run check:large-files:gate`
-- [ ] V.2 `npm run typecheck`
-- [ ] V.3 `npm run test`
+- [x] V.2 `npm run typecheck`
+- [x] V.3 `npm run test`
 - [ ] V.4 Claude 手测矩阵补齐：
+  - 手测矩阵见 `openspec/docs/claude-mode-rollout-v4-manual-test-matrix-2026-04-17.md`
   - `plan` 模式只读执行
   - `full-access` 不进入审批链
   - `default` 触发单文件审批、批量审批、审批后继续执行
   - 历史重开后仍能恢复 `File changes` 卡片
+  - `default` 命中 command execution / shell 权限阻塞时进入 `modeBlocked` 诊断
   - `acceptEdits` 在开放前保持禁用
 
 ## 2. 回滚策略

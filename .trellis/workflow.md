@@ -218,8 +218,15 @@ python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
    --> git commit -m "type(scope): description"
        Format: feat/fix/docs/refactor/test/chore
 
-7. Record session (one command)
-   --> python3 ./.trellis/scripts/add_session.py --title "Title" --commit "hash"
+7. Record session (mandatory after successful commit)
+   --> If the AI executed `git commit`, it MUST continue into this step automatically unless the user explicitly opts out
+   --> Run from repo root only; use repo-relative paths, never user-specific absolute paths
+   --> python3 ./.trellis/scripts/get_context.py --mode record
+   --> cat << 'EOF' | python3 ./.trellis/scripts/add_session.py --stdin --title "Title" --commit "hash"
+       Task goal, main changes, affected modules, validation results, follow-ups
+       EOF
+   --> If developer is not initialized, ask the collaborator for a developer id before running init_developer.py
+   --> Verify the Trellis metadata commit and report both the code commit hash and record commit hash
 
 8. Verify and close spec loop
    --> openspec validate --change "<change-id>" --strict
@@ -250,6 +257,8 @@ python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
 After code is committed, use:
 
 ```bash
+python3 ./.trellis/scripts/get_context.py --mode record
+
 python3 ./.trellis/scripts/add_session.py \
   --title "Session Title" \
   --commit "abc1234" \
@@ -261,6 +270,13 @@ This automatically:
 2. Creates new file if 2000-line limit exceeded
 3. Appends session content
 4. Updates index.md (sessions count, history table)
+
+Multi-user / multi-machine rules:
+- Run commands from the repository root.
+- Use repo-relative paths such as `./.trellis/scripts/add_session.py`.
+- Do not write user-specific absolute paths into commands or documentation.
+- Do not guess the developer id. Let `.trellis/.developer` drive the active workspace; if missing, ask the collaborator before initializing.
+- `add_session.py` auto-detects branch/package where possible and writes to `.trellis/workspace/<active-developer>/`.
 
 ### Pre-end Checklist
 
@@ -363,6 +379,7 @@ python3 ./.trellis/scripts/task.py list-archive    # List archived tasks
    - After fix bug, use `/trellis:break-loop` for deep analysis
    - Human commits after testing passes
    - Use `add_session.py` to record progress
+   - If the AI itself performed `git commit`, do not end the workflow before `add_session.py` is executed unless the user explicitly says to skip recording
 
 ### [X] DON'T - Should Not Do
 
