@@ -839,3 +839,58 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: runtime pool console visible settings entry
+
+**Date**: 2026-04-18
+**Task**: runtime pool console visible settings entry
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复 runtime pool console 已实现但用户在设置里不可达的问题。
+- 将入口从隐藏的 Codex 分区解耦，放到当前可见的 Other 分区。
+
+主要改动:
+- 新增独立 RuntimePoolSection，承载 runtime snapshot、诊断、pin/release/close、预算与 TTL 设置。
+- OtherSection 接入 RuntimePoolSection，确保设置页可见入口稳定存在。
+- CodexSection 移除重复的 runtime pool UI，避免以后出现双入口和职责混杂。
+- SettingsView 补齐 OtherSection 所需的 t/appSettings/onUpdateAppSettings 透传。
+
+涉及模块:
+- src/features/settings/components/SettingsView.tsx
+- src/features/settings/components/settings-view/sections/OtherSection.tsx
+- src/features/settings/components/settings-view/sections/CodexSection.tsx
+- src/features/settings/components/settings-view/sections/RuntimePoolSection.tsx
+
+验证结果:
+- npx vitest run src/features/settings/components/SettingsView.test.tsx 通过。
+- 用户不可见问题根因已确认并修复：SHOW_CODEX_ENTRY=false 不再影响 Runtime Pool Console 可达性。
+
+后续事项:
+- 当前仓库仍有未提交的 threads 相关用户改动，本次 record 不应包含它们。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d1e17770b8e8a0cbab6c701176fbadd8c6c716cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
