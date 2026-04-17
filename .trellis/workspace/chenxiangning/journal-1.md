@@ -581,3 +581,72 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Claude 默认审批桥接边界与审批卡展示收口
+
+**Date**: 2026-04-18
+**Task**: Claude 默认审批桥接边界与审批卡展示收口
+**Branch**: `feature/vvvv0.4.3`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：
+- 全面 review 当前工作区关于 Claude mode rollout、synthetic approval bridge 和审批卡 UI 的改动。
+- 修复边界条件、跨平台兼容和审批卡展示契约中的问题，并将 OpenSpec 回写与手测矩阵补齐后提交。
+
+主要改动：
+- 修复 Rust 侧 Claude approval bridge 对 Windows 风格命令路径、cmd/shell_command alias 的识别。
+- 增加 symlink 目标拦截和 macOS /tmp 别名绝对路径解析兜底，避免 workspace 越界或错误报错。
+- 补充 Rust 回归测试，覆盖命令 alias、缺失父目录、绝对路径和 symlink 拒绝场景。
+- 重构 ApprovalToasts 的展示提取逻辑，从嵌套 input/arguments payload 提取路径/说明摘要，并补齐审批卡标签 i18n。
+- 调整 inline 审批卡到底部承接，增强 icon/badge/summary 结构，保持隐藏大段 content/patch/diff 正文。
+- 回写 OpenSpec proposal/design/tasks/spec 和手测矩阵，明确审批卡展示基线与验证项。
+
+涉及模块：
+- src-tauri/src/engine/claude/approval.rs
+- src-tauri/src/engine/claude/event_conversion.rs
+- src-tauri/src/engine/claude/tests_core.rs
+- src/features/app/components/ApprovalToasts.tsx
+- src/features/app/components/ApprovalToasts.test.tsx
+- src/features/messages/components/Messages.tsx
+- src/features/messages/components/Messages.rich-content.test.tsx
+- src/styles/approval-toasts.css
+- src/styles/messages.css
+- src/i18n/locales/en.part2.ts
+- src/i18n/locales/zh.part2.ts
+- openspec/changes/claude-code-mode-progressive-rollout/*
+- openspec/docs/claude-mode-rollout-v4-manual-test-matrix-2026-04-17.md
+
+验证结果：
+- cargo test --manifest-path src-tauri/Cargo.toml synthetic_claude -- --nocapture 通过
+- pnpm vitest run src/features/app/components/ApprovalToasts.test.tsx src/features/messages/components/Messages.rich-content.test.tsx 通过
+- pnpm typecheck 通过
+- pnpm check:large-files:near-threshold 通过（仅存量 near-threshold 告警，无新增超 3000 行文件）
+
+后续事项：
+- 如需进一步降低 large-file 风险，后续可独立拆分 approval.rs 的命令解析/文件 apply helper，但本次未触发 3000 hard gate。
+- 等待后续手测或联调反馈，再决定是否继续开放 acceptEdits 或扩展非文件工具 bridge。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `66eab13c15f60de2ed95a8b67fe20d44ce273a7b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
