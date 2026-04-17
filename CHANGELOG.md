@@ -6,6 +6,10 @@
 
 中文：
 
+✨ Features
+- 渐进开放 Claude Code planning mode 与默认模式，补齐从预览到默认可用的发布链路
+- 完成 Claude 默认模式审批桥与对话连续性改造，提升计划执行切换时的上下文连贯性
+
 🐛 Fixes
 - 修复共享会话幕布中 assistant 重复输出与 fallback 误判
 - 提升 Codex/Claude 数学公式渲染与会话去重兼容性
@@ -13,8 +17,14 @@
 - 修复焦点刷新反复触发 opencode 会话探测问题
 - 修复 Codex 选择智能体后用户消息双份回归
 - 对齐物理回溯截断并修复多轮回退错位
+- 补充 Claude 权限拒绝场景的兜底诊断，降低审批失败时的定位成本
+- 完善 Claude 渐进式 rollout 的审批链路、计划卡片渲染与模式边界处理
 
 English:
+
+✨ Features
+- Gradually open Claude Code planning mode and default mode, completing the rollout path from preview to default availability
+- Complete the Claude default-mode approval bridge and conversation continuity refactor to improve context continuity during plan-to-execution transitions
 
 🐛 Fixes
 - Fix duplicate assistant outputs and fallback misclassification in shared-session curtain rendering
@@ -23,6 +33,8 @@ English:
 - Fix repeated OpenCode session probing during focus refresh
 - Fix duplicated user messages after selecting an agent in Codex
 - Align physical rewind truncation and fix offset drift across multi-round rollback
+- Add fallback diagnostics for Claude permission-denied scenarios to reduce troubleshooting cost when approvals fail
+- Tighten Claude progressive-rollout approval flow, plan-card rendering, and mode-boundary handling
 
 ---
 
