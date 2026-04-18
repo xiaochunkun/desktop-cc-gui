@@ -1500,6 +1500,7 @@ const zhPart1 = {
     runtimeReconnectRunning: "正在连接...",
     runtimeReconnectSuccess: "已重新连接 runtime。现在可以重试发送。",
     runtimeReconnectFailed: "重新连接失败。请稍后再试，或手动刷新 Runtime Pool Console。",
+    runtimeReconnectRecoverFailed: "runtime 已恢复，但当前会话没有自动续接成功。请重新打开该会话或新建会话后重试。",
     runtimeReconnectUnavailable: "当前消息没有关联的工作区 runtime，暂时无法执行重新连接。",
     memoryContextSummary: "记忆上下文摘要",
     memoryContextSummaryCount: "{{count}} 条记忆",

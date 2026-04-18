@@ -1535,6 +1535,8 @@ const enPart1 = {
     runtimeReconnectSuccess: "Runtime reconnected. You can retry sending now.",
     runtimeReconnectFailed:
       "Failed to reconnect the runtime. Try again, or refresh the Runtime Pool Console manually.",
+    runtimeReconnectRecoverFailed:
+      "The runtime is back, but this thread could not resume automatically. Reopen the conversation or start a new one, then retry.",
     runtimeReconnectUnavailable:
       "This message is not bound to a workspace runtime, so reconnect is unavailable.",
     memoryContextSummary: "Memory context summary",

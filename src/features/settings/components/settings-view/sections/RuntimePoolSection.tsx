@@ -307,7 +307,7 @@ export function RuntimePoolSection({
 
       <Card className="border-slate-200/80 bg-white/95 shadow-sm dark:border-slate-800/90 dark:bg-slate-950/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
         <CardHeader className="gap-3 px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-2">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-100">
@@ -321,35 +321,18 @@ export function RuntimePoolSection({
                 {t("settings.runtimePoolDescription")}
               </CardDescription>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5 xl:justify-end">
-              <Badge className="h-6 rounded-full px-2.5 text-[11px] font-medium dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200" variant="outline">
-                {t("settings.runtimeBudgetHotBadge", {
-                  count: appSettings.codexMaxHotRuntimes,
-                })}
-              </Badge>
-              <Badge className="h-6 rounded-full px-2.5 text-[11px] font-medium dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200" variant="outline">
-                {t("settings.runtimeBudgetWarmBadge", {
-                  count: appSettings.codexMaxWarmRuntimes,
-                })}
-              </Badge>
-              <Badge className="h-6 rounded-full px-2.5 text-[11px] font-medium dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200" variant="outline">
-                {t("settings.runtimeBudgetTtlBadge", {
-                  count: appSettings.codexWarmTtlSeconds,
-                })}
-              </Badge>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  void loadSnapshot();
-                }}
-                disabled={runtimeLoading}
-                className="h-7.5 rounded-full px-3 text-[12px] dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800"
-              >
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                {t("settings.refresh")}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void loadSnapshot();
+              }}
+              disabled={runtimeLoading}
+              className="h-7.5 shrink-0 rounded-full px-3 text-[12px] dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              {t("settings.refresh")}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-4 pt-0 md:px-5">

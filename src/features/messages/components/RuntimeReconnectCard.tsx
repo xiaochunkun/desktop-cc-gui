@@ -11,11 +11,18 @@ import {
 type RuntimeReconnectCardProps = {
   hint: RuntimeReconnectHint;
   workspaceId?: string | null;
+  threadId?: string | null;
+  onRecoverThreadRuntime?: (
+    workspaceId: string,
+    threadId: string,
+  ) => Promise<string | null | void> | string | null | void;
 };
 
 export function RuntimeReconnectCard({
   hint,
   workspaceId = null,
+  threadId = null,
+  onRecoverThreadRuntime,
 }: RuntimeReconnectCardProps) {
   const { t } = useTranslation();
   const [isReconnectRunning, setIsReconnectRunning] = useState(false);
@@ -27,7 +34,7 @@ export function RuntimeReconnectCard({
     setIsReconnectRunning(false);
     setReconnectStatus("idle");
     setReconnectErrorDetail(null);
-  }, [hint.rawMessage, workspaceId]);
+  }, [hint.rawMessage, threadId, workspaceId]);
 
   const handleReconnectRuntime = useCallback(async () => {
     if (!workspaceId || isReconnectRunning) {
@@ -38,6 +45,14 @@ export function RuntimeReconnectCard({
     setReconnectErrorDetail(null);
     try {
       await ensureRuntimeReady(workspaceId);
+      if (threadId && onRecoverThreadRuntime) {
+        const recoveredThreadId = await onRecoverThreadRuntime(workspaceId, threadId);
+        if (recoveredThreadId === null) {
+          setReconnectStatus("error");
+          setReconnectErrorDetail(t("messages.runtimeReconnectRecoverFailed"));
+          return;
+        }
+      }
       setReconnectStatus("success");
     } catch (error) {
       setReconnectStatus("error");
@@ -45,7 +60,7 @@ export function RuntimeReconnectCard({
     } finally {
       setIsReconnectRunning(false);
     }
-  }, [isReconnectRunning, workspaceId]);
+  }, [isReconnectRunning, onRecoverThreadRuntime, t, threadId, workspaceId]);
 
   return (
     <div className="message-runtime-recovery-card" role="group" aria-label={t("messages.runtimeReconnectTitle")}>
