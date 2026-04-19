@@ -875,6 +875,8 @@ export type MessageSendOptions = {
   effort?: string | null;
   collaborationMode?: Record<string, unknown> | null;
   accessMode?: AccessMode;
+  skipOptimisticUserBubble?: boolean;
+  suppressUserMessageRender?: boolean;
 };
 
 export type SelectedAgentOption = {

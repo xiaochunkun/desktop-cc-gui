@@ -1532,7 +1532,9 @@ const enPart1 = {
       "This workspace does not currently have an available managed runtime. Reconnect the runtime, then retry your send.",
     runtimeReconnectAction: "Reconnect runtime",
     runtimeReconnectRunning: "Reconnecting...",
-    runtimeReconnectSuccess: "Runtime reconnected. You can send again now.",
+    runtimeReconnectResendAction: "Reconnect and resend previous prompt",
+    runtimeReconnectResendRunning: "Reconnecting and resending...",
+    runtimeReconnectResendUnavailable: "There is no previous prompt available to resend.",
     runtimeReconnectFailed:
       "Failed to reconnect the runtime. Try again, or refresh the Runtime Pool Console manually.",
     runtimeReconnectRecoverFailed:
@@ -1544,7 +1546,10 @@ const enPart1 = {
       "This conversation is pointing at a stale thread handle. Try restoring the current conversation binding, then continue chatting.",
     threadRecoveryAction: "Try recovery",
     threadRecoveryRunning: "Recovering...",
-    threadRecoverySuccess: "Recovery completed. You can send again now.",
+    threadRecoveryResendAction: "Recover and resend previous prompt",
+    threadRecoveryResendRunning: "Recovering and resending...",
+    threadRecoveryResendUnavailable:
+      "There is no previous prompt available to resend.",
     threadRecoveryFailed:
       "Recovery failed. Try again, or reopen the conversation before retrying.",
     threadRecoveryRecoverFailed:
