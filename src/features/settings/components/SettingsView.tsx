@@ -2700,8 +2700,8 @@ export function SettingsView({
                 <ExperimentalToggleRow
                   title={t("settings.steerMode")}
                   description={t("settings.steerModeDesc")}
-                  markerLabel={t("settings.experimentalBadgePreview")}
-                  markerTone="warning"
+                  markerLabel={t("settings.experimentalBadgeAvailable")}
+                  markerTone="success"
                   markerDetail={t("settings.steerModeMarkerDesc")}
                   checked={appSettings.experimentalSteerEnabled}
                   onCheckedChange={(checked) =>

@@ -415,14 +415,14 @@ describe("SettingsView projects display", () => {
 });
 
 describe("SettingsView Display", () => {
-  it("keeps codex, dictation, and git sidebar entries hidden while showing experimental", async () => {
+  it("keeps codex, dictation, git, and experimental sidebar entries hidden", async () => {
     renderDisplaySection();
     await flushSettingsViewEffects();
 
     expect(screen.queryByRole("button", { name: "Dictation" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Git" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Codex" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Experimental" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Experimental" })).toBeNull();
     expect(screen.getByRole("button", { name: "settings.sidebarWebService" })).toBeTruthy();
   });
 
@@ -525,7 +525,7 @@ describe("SettingsView Display", () => {
 
     expect(screen.getByText("Recommended")).toBeTruthy();
     expect(screen.getByText("Official config")).toBeTruthy();
-    expect(screen.getByText("Preview")).toBeTruthy();
+    expect(screen.getByText("Available")).toBeTruthy();
     expect(
       screen.getByText(
         "This already feeds the main interaction path and is enabled by default; keep it on if you want Plan mode.",
@@ -534,6 +534,11 @@ describe("SettingsView Display", () => {
     expect(
       screen.getByText(
         "This is the only experimental item that syncs to the official CODEX_HOME/config.toml. Turn it on only when you need long-running background commands.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This is already wired into same-run continuation, queued send, and queue fusion. Turn it on if you often keep asking follow-ups while an answer is still streaming.",
       ),
     ).toBeTruthy();
   });

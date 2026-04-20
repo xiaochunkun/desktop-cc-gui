@@ -1406,6 +1406,7 @@ const enPart1 = {
     configFileDesc: "Open the official Codex config in {{fileManager}}.",
     experimentalBadgeRecommended: "Recommended",
     experimentalBadgeOfficial: "Official config",
+    experimentalBadgeAvailable: "Available",
     experimentalBadgePreview: "Preview",
     collaborationModes: "Collaboration modes",
     collaborationModesDesc:
@@ -1417,11 +1418,11 @@ const enPart1 = {
       "When enabled: sync the official unified_exec passthrough for background terminal runs.",
     backgroundTerminalMarkerDesc:
       "This is the only experimental item that syncs to the official CODEX_HOME/config.toml. Turn it on only when you need long-running background commands.",
-    steerMode: "Steer mode",
+    steerMode: "Follow-up fusion",
     steerModeDesc:
-      "When enabled: keep sending messages during runs and queue them automatically.",
+      "When enabled: keep asking follow-ups while a response is streaming, queue them automatically, and fuse them into the current answer when available.",
     steerModeMarkerDesc:
-      "This is wired into the send/runtime flow, but it is still better suited for users who already understand the runtime behavior. Leave it off first if you're unsure.",
+      "This is already wired into same-run continuation, queued send, and queue fusion. Turn it on if you often keep asking follow-ups while an answer is still streaming.",
 
     // Error messages
     unableToOpenConfig: "Unable to open config.",

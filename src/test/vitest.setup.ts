@@ -414,6 +414,7 @@ vi.mock("react-i18next", () => ({
         "settings.fileManagerGeneric": "File Manager",
         "settings.experimentalBadgeRecommended": "Recommended",
         "settings.experimentalBadgeOfficial": "Official config",
+        "settings.experimentalBadgeAvailable": "Available",
         "settings.experimentalBadgePreview": "Preview",
         "settings.collaborationModes": "Collaboration modes",
         "settings.collaborationModesDesc": "Enable collaboration mode presets (Code, Plan).",
@@ -423,10 +424,11 @@ vi.mock("react-i18next", () => ({
         "settings.backgroundTerminalDesc": "Enable the official unified_exec passthrough for long-running terminal commands.",
         "settings.backgroundTerminalMarkerDesc":
           "This is the only experimental item that syncs to the official CODEX_HOME/config.toml. Turn it on only when you need long-running background commands.",
-        "settings.steerMode": "Steer mode",
-        "settings.steerModeDesc": "Send messages immediately. Use Tab to queue while a run is active.",
+        "settings.steerMode": "Follow-up fusion",
+        "settings.steerModeDesc":
+          "When enabled: keep asking follow-ups while a response is streaming, queue them automatically, and fuse them into the current answer when available.",
         "settings.steerModeMarkerDesc":
-          "This is wired into the send/runtime flow, but it is still better suited for users who already understand the runtime behavior. Leave it off first if you're unsure.",
+          "This is already wired into same-run continuation, queued send, and queue fusion. Turn it on if you often keep asking follow-ups while an answer is still streaming.",
         "chat.contextDualViewLabel": "Dual",
         "chat.contextDualViewTotalTokens": "Total {{tokens}}",
         "chat.contextDualViewEmpty": "No context usage yet",

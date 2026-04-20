@@ -1378,6 +1378,7 @@ const zhPart1 = {
     configFileDesc: "在{{fileManager}}中打开官方 Codex 配置。",
     experimentalBadgeRecommended: "建议开启",
     experimentalBadgeOfficial: "官方配置",
+    experimentalBadgeAvailable: "已可用",
     experimentalBadgePreview: "预览",
     collaborationModes: "协作模式",
     collaborationModesDesc: "开启后：输入框可切换 Code / Plan；Plan 下支持交互提问卡片。",
@@ -1385,9 +1386,9 @@ const zhPart1 = {
     backgroundTerminal: "后台终端",
     backgroundTerminalDesc: "开启后：同步 official unified_exec，让长时间命令可在后台持续运行。",
     backgroundTerminalMarkerDesc: "这是唯一会同步到官方 CODEX_HOME/config.toml 的实验项，适合确实需要后台长命令时按需开启。",
-    steerMode: "引导模式",
-    steerModeDesc: "开启后：可在运行中继续发消息，系统会自动排队处理。",
-    steerModeMarkerDesc: "已接入发送链路，但当前更适合熟悉运行时行为后再开启；默认建议先关闭观察。",
+    steerMode: "续写与融合",
+    steerModeDesc: "开启后：回答生成过程中可继续追问，系统会自动排队并支持融合到当前回复。",
+    steerModeMarkerDesc: "已接入运行中续写、排队发送和融合链路；如果你经常在回答生成过程中继续追问，建议直接开启。",
 
     // 错误消息
     unableToOpenConfig: "无法打开配置。",
