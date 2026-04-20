@@ -406,6 +406,10 @@ const enPart1 = {
     globalAgentsMd: "Global AGENTS.md",
     globalCodexConfig: "Global Codex Config",
     openInFinder: "Open in Finder",
+    openInFileManager: "Open in {{fileManager}}",
+    fileManagerFinder: "Finder",
+    fileManagerExplorer: "Explorer",
+    fileManagerGeneric: "File Manager",
 
     // Workspace groups
     workspaceGroups: "Workspace Groups",
@@ -879,6 +883,22 @@ const enPart1 = {
     projectSessionEngineOpencode: "OpenCode",
     sessionManagementDescription:
       "Manage real session history per project with paged loading, filtering, batch archive, unarchive, and deletion.",
+    sessionManagementModeProject: "Project view",
+    sessionManagementModeGlobal: "Global archive",
+    sessionManagementGlobalCodexOnly:
+      "Global history currently shows Codex sessions visible to this client.",
+    sessionManagementGlobalEmpty: "No global Codex history is currently visible.",
+    sessionManagementGlobalSectionTitle: "Global Codex history",
+    sessionManagementGlobalSectionDescription:
+      "This surface shows the full Codex history currently visible to this client.",
+    sessionManagementViewGlobalCta: "View global archive",
+    sessionManagementProjectEmptyStrictHint:
+      "This list only shows strict matches for the current project. Empty here does not mean this machine has no other visible history.",
+    sessionManagementStrictSectionTitle: "Strict project sessions",
+    sessionManagementRelatedSectionTitle: "Related history",
+    sessionManagementRelatedSectionDescription:
+      "These sessions are related to the current project, but they are not strict path matches.",
+    sessionManagementWorkspaceUnassigned: "Unassigned history",
     sessionManagementSearchPlaceholder: "Search by title, ID, or source...",
     sessionManagementEngineAll: "All engines",
     sessionManagementStatusActive: "Active only",
@@ -891,8 +911,18 @@ const enPart1 = {
     sessionManagementDeleteSuccess: "Deleted {{count}} sessions.",
     sessionManagementMutationPartial:
       "Processed {{succeeded}} sessions, {{failed}} failed. {{reason}}",
+    sessionManagementOwnerUnresolved:
+      "This session does not have a uniquely resolved owner workspace yet, so archive, unarchive, and delete are currently blocked.",
+    sessionManagementMissingMutationResult:
+      "The session mutation result was incomplete. Refresh and try again.",
     sessionManagementPartialSource: "Current result includes fallback source: {{source}}",
     sessionManagementBadgeArchived: "Archived",
+    sessionManagementBadgeRelated: "Inferred",
+    sessionManagementAttributionReasonWorktreeFamily: "Same worktree family",
+    sessionManagementAttributionReasonGitRoot: "Same git root",
+    sessionManagementAttributionReasonParentScope: "Matched parent project scope",
+    sessionManagementAttributionConfidenceHigh: "High confidence",
+    sessionManagementAttributionConfidenceMedium: "Medium confidence",
     sessionManagementLoadMore: "Load more",
     sessionManagementLoadingMore: "Loading more...",
     radarHistoryTitle: "Radar History Management",
@@ -1368,21 +1398,31 @@ const enPart1 = {
     // Experimental section
     experimentalTitle: "Experimental",
     experimentalDescription: "Preview features that may change or be removed.",
-    experimentalWarning1: "Experimental flags are stored in the default CODEX_HOME config.toml.",
-    experimentalWarning2: "Workspace overrides are not updated.",
+    experimentalWarning1:
+      "Only Background terminal syncs to the default CODEX_HOME config.toml.",
+    experimentalWarning2:
+      "Collaboration modes and Steer mode stay in desktop-local settings.",
     configFile: "Config file",
-    configFileDesc: "Open the Codex config in Finder.",
-    multiAgent: "Multi-agent",
-    multiAgentDesc: "When enabled: split complex tasks across multiple agents in parallel.",
+    configFileDesc: "Open the official Codex config in {{fileManager}}.",
+    experimentalBadgeRecommended: "Recommended",
+    experimentalBadgeOfficial: "Official config",
+    experimentalBadgeAvailable: "Available",
+    experimentalBadgePreview: "Preview",
     collaborationModes: "Collaboration modes",
     collaborationModesDesc:
       "When enabled: switch between Code / Plan in composer; Plan supports interactive question cards.",
+    collaborationModesMarkerDesc:
+      "This already feeds the main interaction path and is enabled by default; keep it on if you want Plan mode.",
     backgroundTerminal: "Background terminal",
     backgroundTerminalDesc:
-      "When enabled: long-running terminal commands continue in background without blocking chat.",
-    steerMode: "Steer mode",
+      "When enabled: sync the official unified_exec passthrough for background terminal runs.",
+    backgroundTerminalMarkerDesc:
+      "This is the only experimental item that syncs to the official CODEX_HOME/config.toml. Turn it on only when you need long-running background commands.",
+    steerMode: "Follow-up fusion",
     steerModeDesc:
-      "When enabled: keep sending messages during runs and queue them automatically.",
+      "When enabled: keep asking follow-ups while a response is streaming, queue them automatically, and fuse them into the current answer when available.",
+    steerModeMarkerDesc:
+      "This is already wired into same-run continuation, queued send, and queue fusion. Turn it on if you often keep asking follow-ups while an answer is still streaming.",
 
     // Error messages
     unableToOpenConfig: "Unable to open config.",

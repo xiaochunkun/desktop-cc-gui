@@ -236,6 +236,8 @@ pub(crate) fn invoke_handler(
         crate::runtime_log::runtime_log_get_session,
         crate::runtime_log::runtime_log_mark_exit,
         crate::session_management::list_workspace_sessions,
+        crate::session_management::list_global_codex_sessions,
+        crate::session_management::list_project_related_codex_sessions,
         crate::session_management::archive_workspace_sessions,
         crate::session_management::unarchive_workspace_sessions,
         crate::session_management::delete_workspace_sessions,

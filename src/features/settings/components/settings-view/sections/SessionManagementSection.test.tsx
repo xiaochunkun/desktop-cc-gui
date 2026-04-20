@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   collectSucceededWorkspaceIds,
   SessionManagementSection,
@@ -9,10 +9,14 @@ import type { WorkspaceInfo } from "../../../../../types";
 import {
   archiveWorkspaceSessions,
   deleteWorkspaceSessions,
+  listGlobalCodexSessions,
+  listProjectRelatedCodexSessions,
   listWorkspaceSessions,
 } from "../../../../../services/tauri";
 
 vi.mock("../../../../../services/tauri", () => ({
+  listGlobalCodexSessions: vi.fn(),
+  listProjectRelatedCodexSessions: vi.fn(),
   listWorkspaceSessions: vi.fn(),
   archiveWorkspaceSessions: vi.fn(),
   unarchiveWorkspaceSessions: vi.fn(),
@@ -45,6 +49,10 @@ function getEnabledButtonByName(name: string) {
   return button as HTMLButtonElement;
 }
 
+function clickFirstEnabledButtonByName(name: string) {
+  fireEvent.click(getEnabledButtonByName(name));
+}
+
 function getEnabledButtonByTestId(testId: string) {
   const button = screen
     .getAllByTestId(testId)
@@ -62,10 +70,29 @@ function getCheckboxByName(name: string) {
 describe("SessionManagementSection", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(listWorkspaceSessions).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+    vi.mocked(listGlobalCodexSessions).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+    vi.mocked(listProjectRelatedCodexSessions).mockResolvedValue({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("renders owner workspace label for aggregated project entries", async () => {
-    vi.mocked(listWorkspaceSessions).mockResolvedValueOnce({
+    vi.mocked(listWorkspaceSessions).mockResolvedValue({
       data: [
         {
           sessionId: "codex:main",
@@ -107,6 +134,111 @@ describe("SessionManagementSection", () => {
     expect(await screen.findAllByText("cli/codex")).toHaveLength(2);
   });
 
+  it("switches to global archive mode and renders unassigned history label", async () => {
+    vi.mocked(listWorkspaceSessions).mockResolvedValueOnce({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+    vi.mocked(listGlobalCodexSessions).mockResolvedValueOnce({
+      data: [
+        {
+          sessionId: "codex:global",
+          workspaceId: "__global_unassigned__",
+          title: "Detached session",
+          updatedAt: 1710000000000,
+          engine: "codex",
+          archivedAt: null,
+          threadKind: "native",
+          sourceLabel: "cli/openai",
+        },
+      ],
+      nextCursor: null,
+      partialSource: null,
+    });
+
+    render(
+      <SessionManagementSection
+        title="Session Management"
+        description="Manage sessions"
+        workspaces={[workspace]}
+        groupedWorkspaces={[{ id: null, name: "Ungrouped", workspaces: [workspace] }]}
+        initialWorkspaceId="ws-1"
+      />,
+    );
+
+    clickFirstEnabledButtonByName("settings.sessionManagementModeGlobal");
+
+    expect(await screen.findByText("settings.sessionManagementWorkspaceUnassigned")).toBeTruthy();
+    expect(listGlobalCodexSessions).toHaveBeenCalled();
+  });
+
+  it("keeps refresh available in global mode even when no workspace is selected", async () => {
+    vi.mocked(listGlobalCodexSessions).mockResolvedValueOnce({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+
+    render(
+      <SessionManagementSection
+        title="Session Management"
+        description="Manage sessions"
+        workspaces={[]}
+        groupedWorkspaces={[]}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "settings.sessionManagementModeGlobal" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "settings.projectSessionRefresh",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "settings.projectSessionRefresh",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(listGlobalCodexSessions).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("explains strict empty state before redirecting users to the global archive", async () => {
+    vi.mocked(listWorkspaceSessions).mockResolvedValueOnce({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+
+    render(
+      <SessionManagementSection
+        title="Session Management"
+        description="Manage sessions"
+        workspaces={[workspace]}
+        groupedWorkspaces={[{ id: null, name: "Ungrouped", workspaces: [workspace] }]}
+        initialWorkspaceId="ws-1"
+      />,
+    );
+
+    expect(
+      await screen.findByText("settings.sessionManagementProjectEmptyStrictHint"),
+    ).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "settings.sessionManagementViewGlobalCta" }),
+    ).toBeTruthy();
+  });
+
   it("collects unique owner workspaces from successful mutation results", () => {
     expect(
       collectSucceededWorkspaceIds([
@@ -138,6 +270,56 @@ describe("SessionManagementSection", () => {
         },
       ]),
     ).toEqual(["ws-1", "ws-2"]);
+  });
+
+  it("renders related sessions in a dedicated inferred surface", async () => {
+    vi.mocked(listWorkspaceSessions).mockResolvedValueOnce({
+      data: [],
+      nextCursor: null,
+      partialSource: null,
+    });
+    vi.mocked(listProjectRelatedCodexSessions).mockResolvedValueOnce({
+      data: [
+        {
+          sessionId: "codex:related",
+          workspaceId: "ws-2",
+          matchedWorkspaceId: "ws-1",
+          matchedWorkspaceLabel: "Workspace",
+          attributionStatus: "inferred-related",
+          attributionReason: "shared-worktree-family",
+          attributionConfidence: "high",
+          title: "Sibling worktree session",
+          updatedAt: 1710000000002,
+          engine: "codex",
+          archivedAt: null,
+          threadKind: "native",
+          sourceLabel: "cli/codex",
+        },
+      ],
+      nextCursor: null,
+      partialSource: null,
+    });
+
+    render(
+      <SessionManagementSection
+        title="Session Management"
+        description="Manage sessions"
+        workspaces={[workspace, worktree]}
+        groupedWorkspaces={[{ id: null, name: "Ungrouped", workspaces: [workspace, worktree] }]}
+        initialWorkspaceId="ws-1"
+      />,
+    );
+
+    expect(await screen.findByText("settings.projectSessionEmpty")).toBeTruthy();
+    expect(
+      await screen.findByText("settings.sessionManagementProjectEmptyStrictHint"),
+    ).toBeTruthy();
+    expect(await screen.findByText("settings.sessionManagementRelatedSectionTitle")).toBeTruthy();
+    expect(await screen.findByText("Sibling worktree session")).toBeTruthy();
+    expect(await screen.findByText("settings.sessionManagementBadgeRelated")).toBeTruthy();
+    expect(
+      await screen.findByText("settings.sessionManagementAttributionReasonWorktreeFamily"),
+    ).toBeTruthy();
   });
 
   it("keeps failed sessions selected after partial archive failure", async () => {

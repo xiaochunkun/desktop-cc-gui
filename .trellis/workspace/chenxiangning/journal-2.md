@@ -240,3 +240,302 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 40: 修正工作树新建会话入口交互
+
+**Date**: 2026-04-20
+**Task**: 修正工作树新建会话入口交互
+**Branch**: `feature/vv0.4.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 修复 worktree 卡片缺失正确的新建会话入口的问题，让用户点击加号时看到引擎选择菜单，而不是直接创建默认 Claude Code 会话。
+
+主要改动:
+- 在 Sidebar menu hook 中抽取可复用的新建会话菜单组构建逻辑。
+- 新增 showWorkspaceSessionMenu，用于只弹出 session-only 菜单。
+- 将 worktree 卡片上的加号入口改为调用 session-only 菜单，而不再直接调用 onAddAgent 默认创建。
+- 为 worktree 加号按钮补充 stopPropagation，避免点击时误触发行折叠。
+- 调整 sidebar 浮层 aria-label，在 session-only 菜单场景下使用新建会话语义。
+- 补充 hook 与组件测试，覆盖 worktree 加号菜单分组和点击不折叠行为。
+
+涉及模块:
+- src/features/app/hooks/useSidebarMenus.ts
+- src/features/app/hooks/useSidebarMenus.test.tsx
+- src/features/app/components/Sidebar.tsx
+- src/features/app/components/WorktreeSection.tsx
+- src/features/app/components/WorktreeCard.tsx
+- src/features/app/components/WorktreeSection.test.tsx
+- src/styles/sidebar.css
+
+验证结果:
+- 已执行 npm exec vitest run src/features/app/components/WorktreeSection.test.tsx src/features/app/hooks/useSidebarMenus.test.tsx
+- 结果: 2 个测试文件通过，9 个测试通过。
+
+后续事项:
+- 工作区仍存在未提交的 session-management 与 rust 相关改动，本次未纳入提交，需与当前 sidebar 修复分开处理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05afc70020bfd35be708a8f92d14f44d972b7e3e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 41: 全局会话归档中心与 Codex 配置边界治理落地
+
+**Date**: 2026-04-20
+**Task**: 全局会话归档中心与 Codex 配置边界治理落地
+**Branch**: `feature/vv0.4.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：落地 global-session-history-archive-center 与 codex-config-flag-boundary-cleanup 两条提案实现，并完成当前工作区 review 中发现的问题修复。
+
+主要改动：
+- 新增全局 Codex 历史与项目相关历史的后端查询命令、catalog 归属字段、分页与治理支持。
+- 更新设置页会话管理视图，支持 project/global 模式切换、strict/related/global 展示与未归属保护。
+- 收紧 Codex config feature flag ownership boundary，补齐对应 OpenSpec proposal/design/tasks/spec。
+- 修复 destructive session_id 边界校验、global 模式刷新禁用条件、前后端 sessionManagement contract 漂移，以及 large-file gate 超限问题。
+
+涉及模块：
+- src-tauri/src/session_management.rs
+- src-tauri/src/local_usage.rs
+- src-tauri/src/local_usage/session_delete.rs
+- src/features/settings/components/settings-view/**
+- src/services/tauri.ts
+- src/services/tauri/sessionManagement.ts
+- openspec/changes/global-session-history-archive-center/**
+- openspec/changes/codex-config-flag-boundary-cleanup/**
+
+验证结果：
+- npx tsc --noEmit
+- npx vitest run src/features/settings/components/settings-view/sections/SessionManagementSection.test.tsx src/features/settings/components/settings-view/hooks/useWorkspaceSessionCatalog.test.tsx src/services/tauri.test.ts
+- cargo test --manifest-path src-tauri/Cargo.toml session_management::tests
+- cargo test --manifest-path src-tauri/Cargo.toml delete_codex_session_for_workspace_rejects_ambiguous_unknown_candidates
+- npm run check:large-files
+
+后续事项：
+- 如需继续收口，可将 src/services/tauri.ts 进一步拆分到更稳定的 service 子模块，避免再次贴近 large-file 阈值。
+- 继续观察 inferred attribution 规则在多 workspace / worktree 场景下的误判率，再决定是否扩展更多归属信号。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f9ce0073` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 42: Codex 配置边界收口与设置页跨平台修复
+
+**Date**: 2026-04-20
+**Task**: Codex 配置边界收口与设置页跨平台修复
+**Branch**: `feature/vv0.4.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+- 完成 OpenSpec 变更 codex-config-flag-boundary-cleanup 的实现落地。
+- 对当前工作区代码进行 review，重点检查配置边界、空值/历史值处理、Windows/macOS 兼容性与 large-file 风险。
+- 发现问题后直接修复并回写提案状态。
+
+## 主要改动
+- Rust `src-tauri/src/codex/config.rs`：移除 collab、collaboration_modes、steer、collaboration_mode_enforcement 四个 private flags 的外部 config 读写入口，仅保留 `unified_exec` passthrough。
+- Rust `src-tauri/src/shared/settings_core.rs`：读取设置时忽略外部历史 private flags，强制 `experimental_collab_enabled = false`；更新/恢复设置时仅同步 `unified_exec`；新增 `CODEX_HOME` 测试守卫，避免环境变量污染测试。
+- Frontend `src/features/settings/hooks/useAppSettings.ts`：统一将 `experimentalCollabEnabled` 归一为 inert legacy 字段。
+- Frontend `src/features/settings/components/SettingsView.tsx`：移除 Multi-agent 假开关；明确 desktop-local 与 official config 边界；将“打开官方 Codex 配置”入口改为平台感知文案（Finder / Explorer / File Manager）。
+- i18n 与测试：更新 `en.part1.ts`、`zh.part1.ts`、`vitest.setup.ts`；补充设置页定向回归测试；OpenSpec `tasks.md` 回写实现与验证结果。
+
+## 涉及模块
+- codex config bridge
+- shared settings core
+- settings frontend / i18n / vitest
+- openspec change tasks
+
+## 验证结果
+- `npm run typecheck` 通过
+- `npm run lint` 通过（0 error，保留仓库既有 `react-hooks/exhaustive-deps` warnings）
+- `npm run check:large-files:near-threshold` 通过；`SettingsView.tsx` 仍处 near-threshold 监控区但未超过 3000 行 hard gate
+- `cargo test --manifest-path src-tauri/Cargo.toml settings_core` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml get_app_settings_core_ignores_private_external_feature_flags` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml update_app_settings_core_only_syncs_unified_exec_to_external_config` 通过
+- `npx vitest run src/features/settings/components/SettingsView.test.tsx -t "removes the dead multi-agent toggle and explains local-vs-official ownership" src/features/collaboration/hooks/useCollaborationModes.test.tsx` 通过
+
+## 后续事项
+- `SettingsView.tsx` 已接近 large-file near-threshold，后续继续叠加功能前应优先拆分 Experimental/Config 相关 section。
+- 仓库仍有既有 lint warnings，未在本次提交中处理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `924bb0a6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 43: 修复会话管理边界处理并补齐全量回归夹具
+
+**Date**: 2026-04-20
+**Task**: 修复会话管理边界处理并补齐全量回归夹具
+**Branch**: `feature/vv0.4.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标
+- 对 2ed25d743d7a36d48615837231317670f7618f53 之后的改动做全面 review，重点检查边界条件、Windows/macOS 兼容性和大文件治理，并直接修复发现的问题。
+- 完成相关验证，补跑前端与 Rust 回归测试，并整理可追溯的提交与 session record。
+
+主要改动
+- 补齐 daemon / web-service 模式下 session-management 的命令桥接、状态分发和 OpenCode 兼容 shim，保证桌面与 daemon 链路一致。
+- 修复 Codex config feature flag 写入时的尾换行边界，以及 external config sync 失败时的错误透传问题。
+- 修复 workspace session catalog 在空响应/null page 下的前端崩溃问题，统一归一化为空页处理。
+- 修复 Windows 下 session root 大小写/分隔符变体导致的去重失效问题。
+- 同步 useThreadActions 相关测试夹具，补齐 listWorkspaceSessions 契约 mock，恢复全量回归。
+
+涉及模块
+- backend/daemon: src-tauri/src/bin/cc_gui_daemon.rs, src-tauri/src/bin/cc_gui_daemon/daemon_state.rs, src-tauri/src/bin/cc_gui_daemon/engine_bridge.rs
+- codex/config & settings: src-tauri/src/codex/config.rs, src-tauri/src/shared/settings_core.rs
+- local usage & session management: src-tauri/src/local_usage.rs, src-tauri/src/session_management.rs, src-tauri/src/storage.rs
+- frontend settings/session catalog: src/features/settings/components/SettingsView.tsx, src/features/settings/components/settings-view/hooks/useWorkspaceSessionCatalog.ts
+- frontend tests: src/features/settings/components/SettingsView.test.tsx, src/features/threads/hooks/useThreadActions.rewind.test.tsx, src/features/threads/hooks/useThreadActions.codex-rewind.test.tsx, src/features/threads/hooks/useThreadActions.shared-native-compat.test.tsx
+
+验证结果
+- npm run typecheck: 通过
+- npm run check:runtime-contracts: 通过
+- npm run check:large-files: 通过
+- cargo test --manifest-path src-tauri/Cargo.toml: 通过（lib 677 passed / cc_gui_daemon 441 passed / tauri_config 1 passed）
+- 受影响前端套件回归通过：SettingsView、useWorkspaceSessionCatalog、SessionManagementSection、useThreadActions 全部相关套件
+- npm run test 全量回归过程中发现并修复了 SettingsView session catalog 空响应崩溃，以及 useThreadActions 测试 mock 契约缺失问题；修复后相关受影响套件全部复绿
+
+后续事项
+- 仓库仍存在若干历史 act(...) warning 和 lint warning，不是本次 blocker，建议后续单独清理以提升 full regression 信噪比。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6292c5ba574a030b35acc2ae214d82a1994b8af4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 44: 设置页实验区入口与续写融合命名收敛
+
+**Date**: 2026-04-20
+**Task**: 设置页实验区入口与续写融合命名收敛
+**Branch**: `feature/vv0.4.4`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 调整设置页 Experimental 区域的可见性与文案语义，确保实验能力入口按需求隐藏，同时保留内部实现。
+- 对齐 steer 对应开关的用户可见命名，使其准确表达 same-run continuation、queued send、queue fusion 能力。
+
+主要改动:
+- 将设置页 sidebar 中的 Experimental 入口重新隐藏，恢复前端常量 gate，避免继续直接暴露实验区入口。
+- 保留 Experimental 区域内部实现，不回退已有开关逻辑，仅调整入口显示状态。
+- 将 steerMode 文案调整为“续写与融合 / Follow-up fusion”，并更新描述为回答生成中继续追问、排队、融合当前回复的真实语义。
+- 新增 Available / 已可用 标记，替换先前对 steer 能力过于保守的预览态表达。
+- 同步更新 SettingsView 测试与 vitest i18n mock，确保入口隐藏与文案渲染回归可验证。
+
+涉及模块:
+- 设置页入口 gate 与 Experimental 区域文案
+- 中英文 locale
+- SettingsView 定向测试夹具
+
+验证结果:
+- npx vitest run src/features/settings/components/SettingsView.test.tsx 通过（32 passed）
+
+后续事项:
+- 如后续需要再次开放 Experimental 入口，只需恢复 settingsViewConstants 中的 SHOW_EXPERIMENTAL_ENTRY。
+- 可继续评估“协作模式”对外命名是否也需要收敛为更贴近 Code / Plan 的用户语义。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0d5bc5a7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -21,7 +21,9 @@ pub(crate) mod thread_mode_state;
 
 use self::args::resolve_workspace_codex_args;
 pub(crate) use self::home::resolve_workspace_codex_home;
-use self::mcp_config::{list_global_mcp_servers as list_global_mcp_servers_impl, GlobalMcpServerEntry};
+use self::mcp_config::{
+    list_global_mcp_servers as list_global_mcp_servers_impl, GlobalMcpServerEntry,
+};
 use self::thread_listing::{build_unified_codex_thread_page, resolve_workspace_fallback_model};
 pub(crate) use crate::backend::app_server::WorkspaceSession;
 use crate::backend::app_server::{
@@ -1959,13 +1961,11 @@ fn sanitize_run_worktree_name(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        normalize_model_id, pick_model_from_model_list_response,
-    };
     use super::thread_listing::{
         build_local_codex_session_preview, build_thread_list_empty_response,
         codex_session_identifier_candidates, merge_unified_codex_thread_entries,
     };
+    use super::{normalize_model_id, pick_model_from_model_list_response};
     use crate::types::{LocalUsageSessionSummary, LocalUsageUsageData};
     use serde_json::json;
     use std::collections::HashSet;
@@ -2056,6 +2056,7 @@ mod tests {
                 session_id: "thread-dup".to_string(),
                 session_id_aliases: Vec::new(),
                 timestamp: 110,
+                cwd: None,
                 model: "openai/gpt-5".to_string(),
                 usage: LocalUsageUsageData::default(),
                 cost: 0.0,
@@ -2069,6 +2070,7 @@ mod tests {
                 session_id: "thread-local".to_string(),
                 session_id_aliases: Vec::new(),
                 timestamp: 105,
+                cwd: None,
                 model: "openai/gpt-5-mini".to_string(),
                 usage: LocalUsageUsageData::default(),
                 cost: 0.0,
@@ -2123,6 +2125,7 @@ mod tests {
             session_id: "thread-dup".to_string(),
             session_id_aliases: Vec::new(),
             timestamp: 110,
+            cwd: None,
             model: "openai/gpt-5".to_string(),
             usage: LocalUsageUsageData::default(),
             cost: 0.0,
@@ -2162,6 +2165,7 @@ mod tests {
             session_id: "session-123".to_string(),
             session_id_aliases: vec!["rollout-2026-04-10T10-00-00-session-123".to_string()],
             timestamp: 110,
+            cwd: None,
             model: "openai/gpt-5".to_string(),
             usage: LocalUsageUsageData::default(),
             cost: 0.0,
@@ -2249,6 +2253,7 @@ mod tests {
             session_id: "session-123".to_string(),
             session_id_aliases: vec!["rollout-2026-04-10T10-00-00-session-123".to_string()],
             timestamp: 110,
+            cwd: None,
             model: "openai/gpt-5".to_string(),
             usage: LocalUsageUsageData::default(),
             cost: 0.0,
