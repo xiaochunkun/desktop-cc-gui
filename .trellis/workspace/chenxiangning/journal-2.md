@@ -1304,3 +1304,55 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 58: 加固 OpenCode 子进程终止与超时收敛
+
+**Date**: 2026-04-20
+**Task**: 加固 OpenCode 子进程终止与超时收敛
+**Branch**: `feature/vvvv0.4.5`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标
+- 将当前工作区中 OpenCode runtime 相关改动单独整理为一次原子提交，避免与 threads/frontend/OpenSpec 改动混在一起。
+
+主要改动
+- 为 OpenCode spawn command 增加进程组配置，改进 Unix 下整条子进程链的终止行为。
+- 在 stdout/stderr 捕获失败时补做进程回收，避免异常启动路径遗留孤儿进程。
+- 统一 send_message、interrupt、stop_turn 的子进程终止逻辑，复用 runtime terminate helper，并在终止失败时保留诊断信息。
+- 调整超时与 quiesced_without_terminal 的结束收敛逻辑，避免半失效状态长期残留。
+- 整理 Windows 风格 workspace scope 测试写法，保持跨平台路径场景可读性。
+
+涉及模块
+- src-tauri/src/engine/opencode.rs
+- src-tauri/src/session_management.rs
+
+验证结果
+- 本次仅进行提交整理，未额外执行新的自动化验证。
+
+后续事项
+- 剩余 threads/frontend/OpenSpec 相关改动将在后续独立提交中继续拆分整理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69ad0190d835f85645e03f90ede6b59314885160` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
