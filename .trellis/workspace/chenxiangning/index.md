@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 59
+- **Total Sessions**: 60
 - **Last Active**: 2026-04-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1414 | Active |
+| `journal-2.md` | ~1463 | Active |
 | `journal-1.md` | ~1990 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 60 | 2026-04-20 | 同步 OpenSpec 稳定性与 Claude compact 进度 | `1924fb95488675e9b7e6fdf42def1ca1ce6e6549` | `feature/vvvv0.4.5` |
 | 59 | 2026-04-20 | 补强线程恢复诊断与会话降级承接 | `d37f2357a43f3959cef13aa7821a700932ad8020` | `feature/vvvv0.4.5` |
 | 58 | 2026-04-20 | 加固 OpenCode 子进程终止与超时收敛 | `69ad0190d835f85645e03f90ede6b59314885160` | `feature/vvvv0.4.5` |
 | 57 | 2026-04-20 | 加固 runtime 恢复与 Claude 手动压缩边界处理 | `a94b46f984e0543572c65d5b3ae33ada9cadd7db` | `feature/vvvv0.4.5` |

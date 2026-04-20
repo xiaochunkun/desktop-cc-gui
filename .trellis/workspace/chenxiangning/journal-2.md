@@ -1412,3 +1412,52 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 60: 同步 OpenSpec 稳定性与 Claude compact 进度
+
+**Date**: 2026-04-20
+**Task**: 同步 OpenSpec 稳定性与 Claude compact 进度
+**Branch**: `feature/vvvv0.4.5`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标
+- 将剩余 OpenSpec 文档更新单独整理为一次规范同步提交，和代码提交解耦。
+
+主要改动
+- 更新 harden-conversation-runtime-stability proposal，记录 2026-04-20 follow-up hotfix：撤销前端 20 秒 no-activity hard-stop watchdog。\n- 在 harden-conversation-runtime-stability tasks 中补记 runtime recovery guard、stability diagnostics、last-good continuity、debug correlation 与 targeted verification 的实际实现切片。\n- 将 claude-code-compact-command-adaptation 的已完成任务勾选为完成，保持任务状态与代码实现一致。
+
+涉及模块
+- openspec/changes/harden-conversation-runtime-stability/proposal.md
+- openspec/changes/harden-conversation-runtime-stability/tasks.md
+- openspec/changes/claude-code-compact-command-adaptation/tasks.md
+
+验证结果
+- 本次为 OpenSpec 同步提交，不涉及新的代码执行。
+
+后续事项
+- 当前工作区已清空，可在后续需要时继续基于最新规范推进下一轮实现或验证。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1924fb95488675e9b7e6fdf42def1ca1ce6e6549` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
