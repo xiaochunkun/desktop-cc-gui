@@ -294,9 +294,19 @@ export type RuntimePoolRow = {
   turnLeaseCount: number;
   streamLeaseCount: number;
   leaseSources: string[];
+  activeWorkProtected: boolean;
+  activeWorkReason?: string | null;
+  activeWorkSinceMs?: number | null;
+  activeWorkLastRenewedAtMs?: number | null;
   evictCandidate: boolean;
   evictionReason: string | null;
   error: string | null;
+  lastExitReasonCode?: string | null;
+  lastExitMessage?: string | null;
+  lastExitAtMs?: number | null;
+  lastExitCode?: number | null;
+  lastExitSignal?: string | null;
+  lastExitPendingRequestCount?: number;
   processDiagnostics?: RuntimeProcessDiagnostics | null;
 };
 
@@ -321,6 +331,7 @@ export type RuntimePoolSnapshot = {
     streamingRuntimes: number;
     gracefulIdleRuntimes: number;
     evictableRuntimes: number;
+    activeWorkProtectedRuntimes: number;
     pinnedRuntimes: number;
     codexRuntimes: number;
     claudeRuntimes: number;

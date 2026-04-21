@@ -36,7 +36,14 @@ fn write_json_atomically(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    let temp_path = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("runtime ledger path has no parent: {}", path.display()))?;
+    let filename = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| format!("runtime ledger path has invalid filename: {}", path.display()))?;
+    let temp_path = parent.join(format!(".{filename}.{}.tmp", uuid::Uuid::new_v4()));
     let mut temp_file = fs::OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -50,7 +57,10 @@ fn write_json_atomically(path: &Path, content: &str) -> Result<(), String> {
     if path.exists() {
         fs::remove_file(path).map_err(|error| error.to_string())?;
     }
-    fs::rename(&temp_path, path).map_err(|error| error.to_string())?;
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error.to_string());
+    }
     Ok(())
 }
 
@@ -192,9 +202,29 @@ pub(crate) struct RuntimePoolRow {
     pub(crate) turn_lease_count: u32,
     pub(crate) stream_lease_count: u32,
     pub(crate) lease_sources: Vec<String>,
+    #[serde(default)]
+    pub(crate) active_work_protected: bool,
+    #[serde(default)]
+    pub(crate) active_work_reason: Option<String>,
+    #[serde(default)]
+    pub(crate) active_work_since_ms: Option<u64>,
+    #[serde(default)]
+    pub(crate) active_work_last_renewed_at_ms: Option<u64>,
     pub(crate) evict_candidate: bool,
     pub(crate) eviction_reason: Option<String>,
     pub(crate) error: Option<String>,
+    #[serde(default)]
+    pub(crate) last_exit_reason_code: Option<String>,
+    #[serde(default)]
+    pub(crate) last_exit_message: Option<String>,
+    #[serde(default)]
+    pub(crate) last_exit_at_ms: Option<u64>,
+    #[serde(default)]
+    pub(crate) last_exit_code: Option<i32>,
+    #[serde(default)]
+    pub(crate) last_exit_signal: Option<String>,
+    #[serde(default)]
+    pub(crate) last_exit_pending_request_count: u32,
     #[serde(default)]
     pub(crate) process_diagnostics: Option<RuntimeProcessDiagnostics>,
 }
@@ -234,6 +264,7 @@ pub(crate) struct RuntimePoolSummary {
     pub(crate) streaming_runtimes: usize,
     pub(crate) graceful_idle_runtimes: usize,
     pub(crate) evictable_runtimes: usize,
+    pub(crate) active_work_protected_runtimes: usize,
     pub(crate) pinned_runtimes: usize,
     pub(crate) codex_runtimes: usize,
     pub(crate) claude_runtimes: usize,
@@ -275,9 +306,17 @@ struct RuntimeEntry {
     zombie_suspected: bool,
     turn_leases: BTreeSet<String>,
     stream_leases: BTreeSet<String>,
+    active_work_since_ms: Option<u64>,
+    active_work_last_renewed_at_ms: Option<u64>,
     evict_candidate: bool,
     manual_release_requested: bool,
     eviction_reason: Option<String>,
+    last_exit_reason_code: Option<String>,
+    last_exit_message: Option<String>,
+    last_exit_at_ms: Option<u64>,
+    last_exit_code: Option<i32>,
+    last_exit_signal: Option<String>,
+    last_exit_pending_request_count: u32,
     process_diagnostics: Option<RuntimeProcessDiagnostics>,
 }
 
@@ -309,9 +348,17 @@ impl RuntimeEntry {
             zombie_suspected: false,
             turn_leases: BTreeSet::new(),
             stream_leases: BTreeSet::new(),
+            active_work_since_ms: None,
+            active_work_last_renewed_at_ms: None,
             evict_candidate: false,
             manual_release_requested: false,
             eviction_reason: None,
+            last_exit_reason_code: None,
+            last_exit_message: None,
+            last_exit_at_ms: None,
+            last_exit_code: None,
+            last_exit_signal: None,
+            last_exit_pending_request_count: 0,
             process_diagnostics: None,
         }
     }
@@ -334,6 +381,48 @@ impl RuntimeEntry {
     fn has_active_leases(&self) -> bool {
         !self.turn_leases.is_empty() || !self.stream_leases.is_empty()
     }
+
+    fn active_work_reason(&self) -> Option<String> {
+        match (!self.turn_leases.is_empty(), !self.stream_leases.is_empty()) {
+            (true, true) => Some("turn+stream".to_string()),
+            (true, false) => Some("turn".to_string()),
+            (false, true) => Some("stream".to_string()),
+            (false, false) => None,
+        }
+    }
+
+    fn refresh_active_work_protection(&mut self) {
+        if !self.has_active_leases() {
+            self.active_work_since_ms = None;
+            self.active_work_last_renewed_at_ms = None;
+            return;
+        }
+        let now = now_millis();
+        self.active_work_since_ms.get_or_insert(now);
+        self.active_work_last_renewed_at_ms = Some(now);
+        self.evict_candidate = false;
+        if self.eviction_reason.as_deref() != Some("manual-release-waiting-for-active-work") {
+            self.eviction_reason = None;
+        }
+    }
+
+    fn clear_active_work_protection_if_idle(&mut self) {
+        if self.has_active_leases() {
+            self.refresh_active_work_protection();
+            return;
+        }
+        self.active_work_since_ms = None;
+        self.active_work_last_renewed_at_ms = None;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RuntimeEndedRecord {
+    pub(crate) reason_code: String,
+    pub(crate) message: Option<String>,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) exit_signal: Option<String>,
+    pub(crate) pending_request_count: u32,
 }
 
 #[derive(Debug)]
@@ -673,6 +762,14 @@ impl RuntimeManager {
         runtime.error = None;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.active_work_since_ms = None;
+        runtime.active_work_last_renewed_at_ms = None;
+        runtime.last_exit_reason_code = None;
+        runtime.last_exit_message = None;
+        runtime.last_exit_at_ms = None;
+        runtime.last_exit_code = None;
+        runtime.last_exit_signal = None;
+        runtime.last_exit_pending_request_count = 0;
         runtime.process_diagnostics = None;
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -697,6 +794,13 @@ impl RuntimeManager {
         runtime.zombie_suspected = false;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.last_exit_reason_code = None;
+        runtime.last_exit_message = None;
+        runtime.last_exit_at_ms = None;
+        runtime.last_exit_code = None;
+        runtime.last_exit_signal = None;
+        runtime.last_exit_pending_request_count = 0;
+        runtime.clear_active_work_protection_if_idle();
         runtime.process_diagnostics = pid.and_then(snapshot_process_diagnostics);
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -730,8 +834,15 @@ impl RuntimeManager {
         runtime.zombie_suspected = false;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.last_exit_reason_code = None;
+        runtime.last_exit_message = None;
+        runtime.last_exit_at_ms = None;
+        runtime.last_exit_code = None;
+        runtime.last_exit_signal = None;
+        runtime.last_exit_pending_request_count = 0;
         runtime.process_diagnostics = Some(diagnostics);
         runtime.turn_leases.insert(source.to_string());
+        runtime.refresh_active_work_protection();
         drop(entries);
         let _ = self.persist_ledger().await;
     }
@@ -742,7 +853,13 @@ impl RuntimeManager {
         if let Some(runtime) = entries.get_mut(&key) {
             runtime.last_used_at_ms = now_millis();
             runtime.evict_candidate = false;
-            runtime.eviction_reason = None;
+            if runtime.eviction_reason.as_deref() != Some("manual-release-waiting-for-active-work")
+            {
+                runtime.eviction_reason = None;
+            }
+            if runtime.has_active_leases() {
+                runtime.refresh_active_work_protection();
+            }
         }
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -761,6 +878,7 @@ impl RuntimeManager {
         runtime.starting = false;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.refresh_active_work_protection();
         drop(entries);
         let _ = self.persist_ledger().await;
     }
@@ -771,6 +889,7 @@ impl RuntimeManager {
         if let Some(runtime) = entries.get_mut(&key) {
             runtime.turn_leases.remove(source);
             runtime.last_used_at_ms = now_millis();
+            runtime.clear_active_work_protection_if_idle();
         }
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -789,6 +908,7 @@ impl RuntimeManager {
         runtime.starting = false;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.refresh_active_work_protection();
         drop(entries);
         let _ = self.persist_ledger().await;
     }
@@ -804,6 +924,7 @@ impl RuntimeManager {
         if let Some(runtime) = entries.get_mut(&key) {
             runtime.stream_leases.remove(source);
             runtime.last_used_at_ms = now_millis();
+            runtime.clear_active_work_protection_if_idle();
         }
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -825,6 +946,10 @@ impl RuntimeManager {
         runtime.stopping = false;
         runtime.evict_candidate = false;
         runtime.eviction_reason = None;
+        runtime.turn_leases.clear();
+        runtime.stream_leases.clear();
+        runtime.active_work_since_ms = None;
+        runtime.active_work_last_renewed_at_ms = None;
         drop(entries);
         let _ = self.persist_ledger().await;
     }
@@ -845,8 +970,12 @@ impl RuntimeManager {
         let mut entries = self.entries.lock().await;
         if let Some(runtime) = entries.get_mut(&key) {
             runtime.manual_release_requested = true;
-            runtime.evict_candidate = true;
-            runtime.eviction_reason = Some("manual-release".to_string());
+            runtime.evict_candidate = !runtime.has_active_leases();
+            runtime.eviction_reason = Some(if runtime.has_active_leases() {
+                "manual-release-waiting-for-active-work".to_string()
+            } else {
+                "manual-release".to_string()
+            });
             runtime.last_used_at_ms = now_millis();
         }
         drop(entries);
@@ -863,6 +992,43 @@ impl RuntimeManager {
             runtime.eviction_reason = None;
             runtime.turn_leases.clear();
             runtime.stream_leases.clear();
+            runtime.active_work_since_ms = None;
+            runtime.active_work_last_renewed_at_ms = None;
+        }
+        drop(entries);
+        let _ = self.persist_ledger().await;
+    }
+
+    pub(crate) async fn record_runtime_ended(
+        &self,
+        engine: &str,
+        workspace_id: &str,
+        record: RuntimeEndedRecord,
+    ) {
+        let key = runtime_key(engine, workspace_id);
+        let mut entries = self.entries.lock().await;
+        if let Some(runtime) = entries.get_mut(&key) {
+            let now = now_millis();
+            runtime.error = record.message.clone();
+            runtime.session_exists = false;
+            runtime.starting = false;
+            runtime.stopping = false;
+            runtime.pid = None;
+            runtime.process_diagnostics = None;
+            runtime.evict_candidate = false;
+            runtime.manual_release_requested = false;
+            runtime.eviction_reason = None;
+            runtime.turn_leases.clear();
+            runtime.stream_leases.clear();
+            runtime.active_work_since_ms = None;
+            runtime.active_work_last_renewed_at_ms = None;
+            runtime.last_exit_reason_code = Some(record.reason_code);
+            runtime.last_exit_message = record.message;
+            runtime.last_exit_at_ms = Some(now);
+            runtime.last_exit_code = record.exit_code;
+            runtime.last_exit_signal = record.exit_signal;
+            runtime.last_exit_pending_request_count = record.pending_request_count;
+            runtime.last_used_at_ms = now;
         }
         drop(entries);
         let _ = self.persist_ledger().await;
@@ -968,6 +1134,8 @@ impl RuntimeManager {
                 let turn_lease_count = entry.turn_leases.len() as u32;
                 let stream_lease_count = entry.stream_leases.len() as u32;
                 let lease_sources = entry.lease_sources();
+                let active_work_protected = entry.has_active_leases();
+                let active_work_reason = entry.active_work_reason();
                 RuntimePoolRow {
                     workspace_id: entry.workspace_id,
                     workspace_name: entry.workspace_name,
@@ -983,9 +1151,19 @@ impl RuntimeManager {
                     turn_lease_count,
                     stream_lease_count,
                     lease_sources,
+                    active_work_protected,
+                    active_work_reason,
+                    active_work_since_ms: entry.active_work_since_ms,
+                    active_work_last_renewed_at_ms: entry.active_work_last_renewed_at_ms,
                     evict_candidate: entry.evict_candidate,
                     eviction_reason: entry.eviction_reason,
                     error: entry.error,
+                    last_exit_reason_code: entry.last_exit_reason_code,
+                    last_exit_message: entry.last_exit_message,
+                    last_exit_at_ms: entry.last_exit_at_ms,
+                    last_exit_code: entry.last_exit_code,
+                    last_exit_signal: entry.last_exit_signal,
+                    last_exit_pending_request_count: entry.last_exit_pending_request_count,
                     process_diagnostics: entry
                         .pid
                         .and_then(snapshot_process_diagnostics)
@@ -1062,6 +1240,19 @@ impl RuntimeManager {
             let Some(entry) = entries.get_mut(&key) else {
                 continue;
             };
+            if leased {
+                if manual_release {
+                    entry.evict_candidate = false;
+                    entry.eviction_reason =
+                        Some("manual-release-waiting-for-active-work".to_string());
+                    diagnostics.lease_blocked_eviction_count += 1;
+                } else if ttl_expired {
+                    diagnostics.lease_blocked_eviction_count += 1;
+                    entry.evict_candidate = false;
+                }
+                entry.refresh_active_work_protection();
+                continue;
+            }
             let mut reason: Option<&str> = None;
             if manual_release {
                 reason = Some("manual-release");
@@ -1077,10 +1268,6 @@ impl RuntimeManager {
 
             if let Some(reason) = reason {
                 if entry.pinned {
-                    continue;
-                }
-                if entry.has_active_leases() {
-                    diagnostics.lease_blocked_eviction_count += 1;
                     continue;
                 }
                 entry.evict_candidate = true;
@@ -1120,6 +1307,8 @@ impl RuntimeManager {
                 let turn_lease_count = entry.turn_leases.len() as u32;
                 let stream_lease_count = entry.stream_leases.len() as u32;
                 let lease_sources = entry.lease_sources();
+                let active_work_protected = entry.has_active_leases();
+                let active_work_reason = entry.active_work_reason();
                 RuntimePoolRow {
                     workspace_id: entry.workspace_id,
                     workspace_name: entry.workspace_name,
@@ -1135,9 +1324,19 @@ impl RuntimeManager {
                     turn_lease_count,
                     stream_lease_count,
                     lease_sources,
+                    active_work_protected,
+                    active_work_reason,
+                    active_work_since_ms: entry.active_work_since_ms,
+                    active_work_last_renewed_at_ms: entry.active_work_last_renewed_at_ms,
                     evict_candidate: entry.evict_candidate,
                     eviction_reason: entry.eviction_reason,
                     error: entry.error,
+                    last_exit_reason_code: entry.last_exit_reason_code,
+                    last_exit_message: entry.last_exit_message,
+                    last_exit_at_ms: entry.last_exit_at_ms,
+                    last_exit_code: entry.last_exit_code,
+                    last_exit_signal: entry.last_exit_signal,
+                    last_exit_pending_request_count: entry.last_exit_pending_request_count,
                     process_diagnostics: entry.process_diagnostics,
                 }
             })
@@ -1212,6 +1411,7 @@ fn runtime_pool_summary_from_rows(rows: &[RuntimePoolRow]) -> RuntimePoolSummary
             .iter()
             .filter(|row| matches!(row.state, RuntimeState::Evictable))
             .count(),
+        active_work_protected_runtimes: rows.iter().filter(|row| row.active_work_protected).count(),
         pinned_runtimes: rows.iter().filter(|row| row.pinned).count(),
         codex_runtimes: rows.iter().filter(|row| row.engine == "codex").count(),
         claude_runtimes: rows.iter().filter(|row| row.engine == "claude").count(),
@@ -1453,6 +1653,7 @@ pub(crate) async fn terminate_workspace_session(
     runtime_manager: Option<&RuntimeManager>,
 ) -> Result<(), String> {
     let workspace_id = session.entry.id.clone();
+    session.mark_manual_shutdown();
     if let Some(runtime_manager) = runtime_manager {
         runtime_manager
             .record_stopping("codex", &workspace_id)
@@ -1997,8 +2198,9 @@ mod tests {
     use super::{
         build_engine_observability, is_engine_root_process, parse_process_rows_unix_output,
         parse_process_rows_windows_payload, write_json_atomically, ProcessSnapshotRow,
-        RuntimeAcquireDisposition, RuntimeAcquireGate, RuntimeEngineObservability, RuntimeManager,
-        RuntimeProcessDiagnostics, RuntimeState, RUNTIME_RECOVERY_MAX_CONSECUTIVE_FAILURES,
+        RuntimeAcquireDisposition, RuntimeAcquireGate, RuntimeEndedRecord,
+        RuntimeEngineObservability, RuntimeManager, RuntimeProcessDiagnostics, RuntimeState,
+        RUNTIME_RECOVERY_MAX_CONSECUTIVE_FAILURES,
     };
     use crate::types::{AppSettings, WorkspaceEntry, WorkspaceKind, WorkspaceSettings};
     use serde_json::json;
@@ -2043,6 +2245,100 @@ mod tests {
         assert!(candidates.is_empty());
         let snapshot = manager.snapshot(&settings).await;
         assert!(matches!(snapshot.rows[0].state, RuntimeState::Acquired));
+    }
+
+    #[tokio::test]
+    async fn manual_release_waits_for_active_work_protection() {
+        let manager = RuntimeManager::new(&std::env::temp_dir());
+        let entry = workspace_entry("manual-release");
+        manager.record_starting(&entry, "codex", "test").await;
+        manager.acquire_turn_lease(&entry, "codex", "turn:a").await;
+        {
+            let mut entries = manager.entries.lock().await;
+            let runtime = entries
+                .get_mut("codex::manual-release")
+                .expect("runtime entry should exist");
+            runtime.session_exists = true;
+            runtime.starting = false;
+        }
+
+        manager
+            .request_release_to_cold("codex", "manual-release")
+            .await;
+
+        let snapshot = manager.snapshot(&AppSettings::default()).await;
+        let row = snapshot
+            .rows
+            .iter()
+            .find(|item| item.workspace_id == "manual-release")
+            .expect("runtime row should exist");
+        assert!(row.active_work_protected);
+        assert_eq!(row.active_work_reason.as_deref(), Some("turn"));
+        assert!(!row.evict_candidate);
+        assert_eq!(
+            row.eviction_reason.as_deref(),
+            Some("manual-release-waiting-for-active-work"),
+        );
+        assert_eq!(snapshot.summary.active_work_protected_runtimes, 1);
+    }
+
+    #[tokio::test]
+    async fn record_runtime_ended_clears_leases_and_persists_exit_diagnostics() {
+        let manager = RuntimeManager::new(&std::env::temp_dir());
+        let entry = workspace_entry("ended");
+        manager.record_starting(&entry, "codex", "test").await;
+        manager.acquire_turn_lease(&entry, "codex", "turn:a").await;
+        manager
+            .acquire_stream_lease(&entry, "codex", "stream:a")
+            .await;
+        {
+            let mut entries = manager.entries.lock().await;
+            let runtime = entries
+                .get_mut("codex::ended")
+                .expect("runtime entry should exist");
+            runtime.session_exists = true;
+            runtime.starting = false;
+            runtime.pid = Some(4242);
+        }
+
+        manager
+            .record_runtime_ended(
+                "codex",
+                "ended",
+                RuntimeEndedRecord {
+                    reason_code: "process_exit".to_string(),
+                    message: Some(
+                        "[RUNTIME_ENDED] Managed runtime process exited unexpectedly.".to_string(),
+                    ),
+                    exit_code: Some(9),
+                    exit_signal: Some("15".to_string()),
+                    pending_request_count: 2,
+                },
+            )
+            .await;
+
+        let snapshot = manager.snapshot(&AppSettings::default()).await;
+        let row = snapshot
+            .rows
+            .iter()
+            .find(|item| item.workspace_id == "ended")
+            .expect("runtime row should exist");
+        assert!(!row.active_work_protected);
+        assert_eq!(row.turn_lease_count, 0);
+        assert_eq!(row.stream_lease_count, 0);
+        assert_eq!(row.last_exit_reason_code.as_deref(), Some("process_exit"));
+        assert_eq!(
+            row.last_exit_message.as_deref(),
+            Some("[RUNTIME_ENDED] Managed runtime process exited unexpectedly.")
+        );
+        assert_eq!(row.last_exit_code, Some(9));
+        assert_eq!(row.last_exit_signal.as_deref(), Some("15"));
+        assert_eq!(row.last_exit_pending_request_count, 2);
+        assert_eq!(
+            row.error.as_deref(),
+            Some("[RUNTIME_ENDED] Managed runtime process exited unexpectedly."),
+        );
+        assert_eq!(row.pid, None);
     }
 
     #[tokio::test]
@@ -2232,9 +2528,19 @@ mod tests {
             turn_lease_count: 1,
             stream_lease_count: 0,
             lease_sources: vec!["turn:test".to_string()],
+            active_work_protected: true,
+            active_work_reason: Some("turn".to_string()),
+            active_work_since_ms: Some(1),
+            active_work_last_renewed_at_ms: Some(2),
             evict_candidate: false,
             eviction_reason: None,
             error: None,
+            last_exit_reason_code: None,
+            last_exit_message: None,
+            last_exit_at_ms: None,
+            last_exit_code: None,
+            last_exit_signal: None,
+            last_exit_pending_request_count: 0,
             process_diagnostics: Some(RuntimeProcessDiagnostics {
                 root_processes: 1,
                 total_processes: 2,

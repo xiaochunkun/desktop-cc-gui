@@ -117,6 +117,22 @@ function getRuntimeStateLabel(
   }
 }
 
+function getActiveWorkLabel(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  reason?: string | null,
+) {
+  switch ((reason ?? "").toLowerCase()) {
+    case "turn":
+      return t("settings.runtimeProtectionTurn");
+    case "stream":
+      return t("settings.runtimeProtectionStream");
+    case "turn+stream":
+      return t("settings.runtimeProtectionTurnStream");
+    default:
+      return t("settings.runtimeActiveWorkProtected");
+  }
+}
+
 export function RuntimePoolSection({
   t,
   appSettings,
@@ -179,6 +195,13 @@ export function RuntimePoolSection({
         value: summary?.streamingRuntimes ?? 0,
         label: t("settings.runtimeMetricStreaming"),
         accent: "from-emerald-500/15 to-emerald-400/5",
+      },
+      {
+        key: "activeProtected",
+        icon: BadgeCheck,
+        value: summary?.activeWorkProtectedRuntimes ?? 0,
+        label: t("settings.runtimeMetricActiveProtected"),
+        accent: "from-blue-500/15 to-blue-400/5",
       },
       {
         key: "idle",
@@ -631,6 +654,11 @@ export function RuntimePoolSection({
                             {row.evictionReason ?? t("settings.runtimeStateEvictable")}
                           </Badge>
                         ) : null}
+                        {row.activeWorkProtected ? (
+                          <Badge className="h-5.5 rounded-full px-2 text-[10px] dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200" variant="secondary">
+                            {getActiveWorkLabel(t, row.activeWorkReason)}
+                          </Badge>
+                        ) : null}
                         {row.pinned ? (
                           <Badge className="h-5.5 rounded-full px-2 text-[10px] dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100" variant="secondary">
                             {t("settings.runtimePin")}
@@ -651,6 +679,14 @@ export function RuntimePoolSection({
                           })} · ${t("settings.runtimeStreamLeaseCountLabel", {
                             count: row.streamLeaseCount,
                           })}`}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-medium text-slate-900 dark:text-slate-100">{t("settings.runtimeProtectionLabel")}</span>{" "}
+                          {row.activeWorkProtected
+                            ? getActiveWorkLabel(t, row.activeWorkReason)
+                            : row.pinned
+                              ? t("settings.runtimeProtectionPinnedIdle")
+                              : t("settings.runtimeProtectionIdle")}
                         </div>
                         <div className="min-w-0">
                           <span className="font-medium text-slate-900 dark:text-slate-100">{t("settings.runtimeProcessLabel")}</span>{" "}
@@ -702,7 +738,7 @@ export function RuntimePoolSection({
                         </div>
                       </div>
 
-                      {row.error || row.evictionReason ? (
+                      {row.error || row.evictionReason || row.lastExitReasonCode ? (
                         <details className="group rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-slate-900/70">
                           <summary className="cursor-pointer list-none text-[11px] font-medium text-slate-600 outline-none marker:content-none dark:text-slate-300">
                             <span className="inline-flex items-center gap-2">
@@ -720,6 +756,34 @@ export function RuntimePoolSection({
                           {row.evictionReason ? (
                             <div className="mt-2 rounded-xl border border-amber-200/80 bg-amber-50/85 px-3 py-2 text-[12px] leading-5 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
                               {t("settings.runtimeEvictionReasonLabel")} {row.evictionReason}
+                            </div>
+                          ) : null}
+                          {row.lastExitReasonCode ? (
+                            <div className="mt-2 rounded-xl border border-sky-200/80 bg-sky-50/85 px-3 py-2 text-[12px] leading-5 text-sky-700 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200">
+                              <div>
+                                {t("settings.runtimeLastExitLabel")} {row.lastExitReasonCode}
+                              </div>
+                              {row.lastExitMessage ? (
+                                <div className="mt-1">{row.lastExitMessage}</div>
+                              ) : null}
+                              <div className="mt-1">
+                                {t("settings.runtimeExitPendingRequestCountLabel", {
+                                  count: row.lastExitPendingRequestCount ?? 0,
+                                })}
+                                {row.lastExitCode != null
+                                  ? ` · ${t("settings.runtimeExitCodeLabel", {
+                                      code: row.lastExitCode,
+                                    })}`
+                                  : ""}
+                                {row.lastExitSignal
+                                  ? ` · ${t("settings.runtimeExitSignalLabel", {
+                                      signal: row.lastExitSignal,
+                                    })}`
+                                  : ""}
+                                {row.lastExitAtMs
+                                  ? ` · ${t("settings.runtimeLastUsedLabel")} ${formatTimestamp(row.lastExitAtMs)}`
+                                  : ""}
+                              </div>
                             </div>
                           ) : null}
                         </details>
