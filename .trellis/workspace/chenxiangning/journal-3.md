@@ -1079,3 +1079,61 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 87: archive completed openspec changes
+
+**Date**: 2026-04-21
+**Task**: archive completed openspec changes
+**Branch**: `feature/v-0.4.7`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 归档已完成并已验证的 OpenSpec changes，确保主 specs 与 archive 状态一致。
+
+主要改动:
+- 使用 openspec archive 归档 3 个 completed changes：mitigate-windows-codex-runtime-churn、fix-codex-stale-thread-binding-recovery、add-unified-exec-official-config-actions。
+- 同步主 specs，更新 conversation-runtime-stability、runtime-orchestrator、runtime-pool-console、conversation-lifecycle-contract、codex-external-config-runtime-reload、codex-unified-exec-override-governance。
+- 新增主 specs：codex-stale-thread-binding-recovery、windows-runtime-churn-diagnostics。
+- 将对应变更目录移动到 openspec/changes/archive/2026-04-21-*。
+
+涉及模块:
+- openspec/changes/
+- openspec/changes/archive/
+- openspec/specs/
+- .trellis/workspace/
+
+验证结果:
+- openspec status --change <name> --json: 三个 change 的 artifacts 全部 done。
+- tasks.md 检查：14/14、16/16、7/7 全部完成。
+- openspec archive -y <change>: 三个 change 均成功同步主 specs 并归档。
+- openspec list --json: 这三个 change 已不再出现在 active changes 列表。
+- git commit: 业务提交 007c3b9d chore(openspec): archive completed changes 已生成。
+
+后续事项:
+- 如需发布或评审，可基于当前分支继续推送/开 PR。
+- 后续归档其他 change 时，优先沿用 openspec archive CLI，避免手工同步 specs。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `007c3b9d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
