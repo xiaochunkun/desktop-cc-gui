@@ -569,6 +569,25 @@ impl DaemonState {
         settings_core::get_app_settings_core(&self.app_settings).await
     }
 
+    pub(super) fn get_codex_unified_exec_external_status(
+        &self,
+    ) -> Result<crate::types::CodexUnifiedExecExternalStatus, String> {
+        settings_core::get_codex_unified_exec_external_status_core()
+    }
+
+    pub(super) fn restore_codex_unified_exec_official_default(
+        &self,
+    ) -> Result<crate::types::CodexUnifiedExecExternalStatus, String> {
+        settings_core::restore_codex_unified_exec_official_default_core()
+    }
+
+    pub(super) fn set_codex_unified_exec_official_override(
+        &self,
+        enabled: bool,
+    ) -> Result<crate::types::CodexUnifiedExecExternalStatus, String> {
+        settings_core::set_codex_unified_exec_official_override_core(enabled)
+    }
+
     pub(super) async fn update_app_settings(
         &self,
         settings: AppSettings,
@@ -580,9 +599,7 @@ impl DaemonState {
             &self.settings_path,
         )
         .await?;
-        let proxy_changed = previous.system_proxy_enabled != updated.system_proxy_enabled
-            || previous.system_proxy_url != updated.system_proxy_url;
-        if proxy_changed {
+        if settings_core::app_settings_change_requires_codex_restart(&previous, &updated) {
             let client_version = env!("CARGO_PKG_VERSION").to_string();
             if let Err(error) = settings_core::restart_codex_sessions_for_app_settings_change_core(
                 &self.workspaces,

@@ -25,6 +25,11 @@ import { normalizeHexColor } from "../../../utils/colorUtils";
 const allowedThemes = new Set(["system", "light", "dark", "dim"]);
 const allowedCanvasWidthModes = new Set(["narrow", "wide"]);
 const allowedLayoutModes = new Set(["default", "swapped"]);
+const allowedCodexUnifiedExecPolicies = new Set([
+  "inherit",
+  "forceEnabled",
+  "forceDisabled",
+]);
 const allowedComposerSendShortcuts = new Set(["enter", "cmdEnter"]);
 const SEARCH_SHORTCUT_DISALLOWED = new Set(["cmd+p", "ctrl+p"]);
 const ALLOWED_NOTIFICATION_SOUND_IDS = new Set([
@@ -139,7 +144,7 @@ const defaultSettings: AppSettings = {
   experimentalCollaborationModesEnabled: true,
   codexModeEnforcementEnabled: true,
   experimentalSteerEnabled: false,
-  experimentalUnifiedExecEnabled: false,
+  codexUnifiedExecPolicy: "inherit",
   chatCanvasUseNormalizedRealtime: false,
   chatCanvasUseUnifiedHistoryLoader: true,
   chatCanvasUsePresentationProfile: false,
@@ -175,6 +180,15 @@ function normalizeAppSettings(
     fallbackUiScaleToDefault?: boolean;
   },
 ): AppSettings {
+  const normalizedUnifiedExecPolicy = allowedCodexUnifiedExecPolicies.has(
+    settings.codexUnifiedExecPolicy,
+  )
+    ? settings.codexUnifiedExecPolicy
+    : "inherit";
+  const migratedUnifiedExecPolicy =
+    normalizedUnifiedExecPolicy === "inherit" && settings.experimentalUnifiedExecEnabled
+      ? "forceEnabled"
+      : normalizedUnifiedExecPolicy;
   const normalizedUserMsgColor = normalizeHexColor(settings.userMsgColor);
   const fallbackUserMsgColor =
     options?.allowLegacyUserMsgColorFallback && !normalizedUserMsgColor
@@ -200,6 +214,8 @@ function normalizeAppSettings(
   return {
     ...settings,
     experimentalCollabEnabled: false,
+    codexUnifiedExecPolicy: migratedUnifiedExecPolicy,
+    experimentalUnifiedExecEnabled: undefined,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
     webServicePort: normalizeWebServicePort(settings.webServicePort),

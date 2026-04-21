@@ -303,6 +303,12 @@ fn codex_args_override_instructions(codex_args: Option<&str>) -> bool {
         if arg.starts_with("developer_instructions=") || arg.starts_with("instructions=") {
             return true;
         }
+        if let Some(value) = arg.strip_prefix("--config=") {
+            let key = value.split('=').next().unwrap_or_default().trim();
+            if key == "developer_instructions" || key == "instructions" {
+                return true;
+            }
+        }
         if arg == "-c" || arg == "--config" {
             if let Some(next) = iter.peek() {
                 let key = next.split('=').next().unwrap_or_default().trim();

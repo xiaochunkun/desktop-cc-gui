@@ -174,6 +174,18 @@ export type OpenAppTarget = {
   args: string[];
 };
 
+export type CodexUnifiedExecPolicy =
+  | "inherit"
+  | "forceEnabled"
+  | "forceDisabled";
+
+export type CodexUnifiedExecExternalStatus = {
+  configPath: string | null;
+  hasExplicitUnifiedExec: boolean;
+  explicitUnifiedExecValue: boolean | null;
+  officialDefaultEnabled: boolean;
+};
+
 export type AppSettings = {
   codexBin: string | null;
   codexArgs: string | null;
@@ -225,7 +237,8 @@ export type AppSettings = {
   experimentalCollaborationModesEnabled: boolean;
   codexModeEnforcementEnabled?: boolean;
   experimentalSteerEnabled: boolean;
-  experimentalUnifiedExecEnabled: boolean;
+  codexUnifiedExecPolicy: CodexUnifiedExecPolicy;
+  experimentalUnifiedExecEnabled?: boolean | null;
   chatCanvasUseNormalizedRealtime: boolean;
   chatCanvasUseUnifiedHistoryLoader: boolean;
   chatCanvasUsePresentationProfile: boolean;

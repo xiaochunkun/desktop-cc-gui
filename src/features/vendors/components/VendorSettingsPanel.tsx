@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ask } from "@tauri-apps/plugin-dialog";
 import PackagePlus from "lucide-react/dist/esm/icons/package-plus";
 import type { CodexCustomModel, CodexProviderConfig, VendorTab } from "../types";
 import { STORAGE_KEYS, validateCodexCustomModels } from "../types";
+import type {
+  AppSettings,
+  CodexUnifiedExecExternalStatus,
+} from "../../../types";
 import { useProviderManagement } from "../hooks/useProviderManagement";
 import { useCodexProviderManagement } from "../hooks/useCodexProviderManagement";
 import { usePluginModels } from "../hooks/usePluginModels";
@@ -20,10 +25,21 @@ import {
   VENDOR_MODEL_MANAGER_REQUEST_EVENT,
 } from "../modelManagerRequest";
 import {
+  getCodexUnifiedExecExternalStatus,
   readGlobalCodexAuthJson,
   readGlobalCodexConfigToml,
+  restoreCodexUnifiedExecOfficialDefault,
+  setCodexUnifiedExecOfficialOverride,
 } from "../../../services/tauri";
+import { pushErrorToast } from "../../../services/toasts";
 import { EngineIcon } from "../../engine/components/EngineIcon";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 
@@ -34,10 +50,16 @@ const LEGACY_CLAUDE_MAPPING_KEYS = [
 const CODEX_PLUGIN_MODELS_MIGRATION_MARKER =
   "codemoss-codex-plugin-models-migrated-v1";
 type ModelDialogTarget = "claude" | "codex" | "gemini";
+type InlineNoticeState =
+  | { kind: "success" | "error"; message: string }
+  | null;
+
 type VendorSettingsPanelProps = {
+  appSettings: AppSettings;
   codexReloadStatus: "idle" | "reloading" | "applied" | "failed";
   codexReloadMessage: string | null;
   handleReloadCodexRuntimeConfig: () => Promise<void>;
+  onUpdateAppSettings: (settings: AppSettings) => Promise<void>;
 };
 
 function collectProviderCustomModels(
@@ -68,9 +90,11 @@ function collectProviderCustomModels(
 }
 
 export function VendorSettingsPanel({
+  appSettings,
   codexReloadStatus,
   codexReloadMessage,
   handleReloadCodexRuntimeConfig,
+  onUpdateAppSettings,
 }: VendorSettingsPanelProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<VendorTab>("claude");
@@ -87,6 +111,17 @@ export function VendorSettingsPanel({
   const [codexAuthConfigTruncated, setCodexAuthConfigTruncated] = useState(false);
   const [codexAuthConfigLoading, setCodexAuthConfigLoading] = useState(false);
   const [codexAuthConfigError, setCodexAuthConfigError] = useState<string | null>(null);
+  const [unifiedExecExternalStatus, setUnifiedExecExternalStatus] =
+    useState<CodexUnifiedExecExternalStatus | null>(null);
+  const [unifiedExecExternalStatusError, setUnifiedExecExternalStatusError] =
+    useState<string | null>(null);
+  const [unifiedExecExternalStatusLoading, setUnifiedExecExternalStatusLoading] =
+    useState(false);
+  const [unifiedExecRepairBusy, setUnifiedExecRepairBusy] = useState(false);
+  const [unifiedExecRepairNotice, setUnifiedExecRepairNotice] =
+    useState<InlineNoticeState>(null);
+  const [dismissUnifiedExecRepairPrompt, setDismissUnifiedExecRepairPrompt] =
+    useState(false);
   const didRunLegacyMigrationRef = useRef(false);
   const didSeedCodexPluginModelsRef = useRef(false);
 
@@ -95,6 +130,8 @@ export function VendorSettingsPanel({
   const claudeModels = usePluginModels(STORAGE_KEYS.CLAUDE_CUSTOM_MODELS);
   const codexModels = usePluginModels(STORAGE_KEYS.CODEX_CUSTOM_MODELS);
   const geminiModels = usePluginModels(STORAGE_KEYS.GEMINI_CUSTOM_MODELS);
+  const codexModelCount = codexModels.models.length;
+  const updateCodexModels = codexModels.updateModels;
 
   const openModelDialog = useCallback((target: ModelDialogTarget, addMode = false) => {
     setDialogTarget(target);
@@ -146,6 +183,26 @@ export function VendorSettingsPanel({
     setCodexAuthConfigLoading(false);
   }, []);
 
+  const refreshUnifiedExecExternalStatus = useCallback(async () => {
+    setUnifiedExecExternalStatusLoading(true);
+    setUnifiedExecExternalStatusError(null);
+    try {
+      const status = await getCodexUnifiedExecExternalStatus();
+      setUnifiedExecExternalStatus(status);
+      return status;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setUnifiedExecExternalStatusError(message);
+      return null;
+    } finally {
+      setUnifiedExecExternalStatusLoading(false);
+    }
+  }, []);
+
+  const refreshUnifiedExecConfigViews = useCallback(async () => {
+    await Promise.all([loadCodexGlobalConfig(), refreshUnifiedExecExternalStatus()]);
+  }, [loadCodexGlobalConfig, refreshUnifiedExecExternalStatus]);
+
   const applyPendingModelManagerRequest = useCallback(() => {
     const request = consumeVendorModelManagerRequest();
     if (!request) {
@@ -176,6 +233,13 @@ export function VendorSettingsPanel({
   useEffect(() => {
     void loadCodexGlobalConfig();
   }, [loadCodexGlobalConfig]);
+
+  useEffect(() => {
+    if (activeTab !== "codex") {
+      return;
+    }
+    void refreshUnifiedExecExternalStatus();
+  }, [activeTab, refreshUnifiedExecExternalStatus]);
 
   useEffect(() => {
     if (didRunLegacyMigrationRef.current) {
@@ -224,7 +288,7 @@ export function VendorSettingsPanel({
       didSeedCodexPluginModelsRef.current = true;
       return;
     }
-    if (codexModels.models.length > 0) {
+    if (codexModelCount > 0) {
       try {
         window.localStorage.setItem(CODEX_PLUGIN_MODELS_MIGRATION_MARKER, "1");
       } catch {
@@ -248,14 +312,233 @@ export function VendorSettingsPanel({
       return;
     }
 
-    codexModels.updateModels(fallbackModels);
+    updateCodexModels(fallbackModels);
     try {
       window.localStorage.setItem(CODEX_PLUGIN_MODELS_MIGRATION_MARKER, "1");
     } catch {
       // ignore marker write errors
     }
     didSeedCodexPluginModelsRef.current = true;
-  }, [codex.codexProviders, codexModels.models.length, codexModels.updateModels]);
+  }, [codex.codexProviders, codexModelCount, updateCodexModels]);
+
+  useEffect(() => {
+    setDismissUnifiedExecRepairPrompt(false);
+  }, [
+    unifiedExecExternalStatus?.hasExplicitUnifiedExec,
+    appSettings.codexUnifiedExecPolicy,
+  ]);
+
+  useEffect(() => {
+    if (!unifiedExecRepairNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setUnifiedExecRepairNotice(null);
+    }, 2600);
+    return () => window.clearTimeout(timer);
+  }, [unifiedExecRepairNotice]);
+
+  const handleUnifiedExecPolicyChange = useCallback(
+    async (nextValue: AppSettings["codexUnifiedExecPolicy"] | null) => {
+      if (
+        !nextValue ||
+        nextValue !== "inherit" &&
+        nextValue !== "forceEnabled" &&
+        nextValue !== "forceDisabled"
+      ) {
+        return;
+      }
+      setUnifiedExecRepairNotice(null);
+      try {
+        await onUpdateAppSettings({
+          ...appSettings,
+          codexUnifiedExecPolicy: nextValue,
+          experimentalUnifiedExecEnabled: undefined,
+        });
+        setUnifiedExecRepairNotice({
+          kind: "success",
+          message: t("settings.backgroundTerminalApplySuccess"),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setUnifiedExecRepairNotice({ kind: "error", message });
+        pushErrorToast({
+          title: t("common.error"),
+          message,
+        });
+      }
+    },
+    [appSettings, onUpdateAppSettings, t],
+  );
+
+  const finalizeUnifiedExecOfficialConfigChange = useCallback(
+    async (
+      mutate: () => Promise<CodexUnifiedExecExternalStatus>,
+      successMessageKeys: {
+        inherit: string;
+        desktopOverride: string;
+      },
+    ) => {
+      setUnifiedExecRepairBusy(true);
+      setUnifiedExecRepairNotice(null);
+      try {
+        const status = await mutate();
+        setUnifiedExecExternalStatus(status);
+        setDismissUnifiedExecRepairPrompt(false);
+
+        if (appSettings.codexUnifiedExecPolicy === "inherit") {
+          try {
+            await handleReloadCodexRuntimeConfig();
+            setUnifiedExecRepairNotice({
+              kind: "success",
+              message: t(successMessageKeys.inherit),
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const reloadFailureMessage = t(
+              "settings.backgroundTerminalOfficialWriteReloadFailed",
+              { message },
+            );
+            setUnifiedExecRepairNotice({
+              kind: "error",
+              message: reloadFailureMessage,
+            });
+            pushErrorToast({
+              title: t("common.error"),
+              message: reloadFailureMessage,
+            });
+          }
+        } else {
+          setUnifiedExecRepairNotice({
+            kind: "success",
+            message: t(successMessageKeys.desktopOverride),
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setUnifiedExecRepairNotice({ kind: "error", message });
+        pushErrorToast({
+          title: t("common.error"),
+          message,
+        });
+      } finally {
+        await refreshUnifiedExecConfigViews();
+        setUnifiedExecRepairBusy(false);
+      }
+    },
+    [
+      appSettings.codexUnifiedExecPolicy,
+      handleReloadCodexRuntimeConfig,
+      refreshUnifiedExecConfigViews,
+      t,
+    ],
+  );
+
+  const handleSetUnifiedExecOfficialOverride = useCallback(
+    async (enabled: boolean) => {
+      const confirmed = await ask(
+        enabled
+          ? t("settings.backgroundTerminalOfficialWriteEnableConfirm")
+          : t("settings.backgroundTerminalOfficialWriteDisableConfirm"),
+        {
+          title: t("settings.backgroundTerminalOfficialWriteTitle"),
+          kind: "warning",
+        },
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      await finalizeUnifiedExecOfficialConfigChange(
+        () => setCodexUnifiedExecOfficialOverride(enabled),
+        enabled
+          ? {
+              inherit:
+                "settings.backgroundTerminalOfficialWriteEnabledApplied",
+              desktopOverride:
+                "settings.backgroundTerminalOfficialWriteEnabledStored",
+            }
+          : {
+              inherit:
+                "settings.backgroundTerminalOfficialWriteDisabledApplied",
+              desktopOverride:
+                "settings.backgroundTerminalOfficialWriteDisabledStored",
+            },
+      );
+    },
+    [finalizeUnifiedExecOfficialConfigChange, t],
+  );
+
+  const handleRestoreUnifiedExecOfficialDefault = useCallback(async () => {
+    const confirmed = await ask(t("settings.backgroundTerminalRepairConfirm"), {
+      title: t("settings.backgroundTerminalRepairTitle"),
+      kind: "warning",
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    await finalizeUnifiedExecOfficialConfigChange(
+      () => restoreCodexUnifiedExecOfficialDefault(),
+      {
+        inherit: "settings.backgroundTerminalRepairAppliedSuccess",
+        desktopOverride: "settings.backgroundTerminalRepairStoredSuccess",
+      },
+    );
+  }, [finalizeUnifiedExecOfficialConfigChange, t]);
+
+  const unifiedExecPolicyOptions: Array<{
+    value: AppSettings["codexUnifiedExecPolicy"];
+    label: string;
+  }> = [
+    {
+      value: "inherit",
+      label: t("settings.backgroundTerminalOptionInherit"),
+    },
+    {
+      value: "forceEnabled",
+      label: t("settings.backgroundTerminalOptionForceEnable"),
+    },
+    {
+      value: "forceDisabled",
+      label: t("settings.backgroundTerminalOptionForceDisable"),
+    },
+  ];
+  const unifiedExecOfficialDefaultDetail = unifiedExecExternalStatus
+    ? unifiedExecExternalStatus.officialDefaultEnabled
+      ? t("settings.backgroundTerminalDefaultEnabled")
+      : t("settings.backgroundTerminalDefaultDisabled")
+    : null;
+  const shouldShowUnifiedExecRepairPrompt =
+    appSettings.codexUnifiedExecPolicy === "inherit" &&
+    unifiedExecExternalStatus?.hasExplicitUnifiedExec &&
+    !dismissUnifiedExecRepairPrompt;
+  const unifiedExecRepairDescription = !unifiedExecExternalStatus?.hasExplicitUnifiedExec
+    ? null
+    : typeof unifiedExecExternalStatus.explicitUnifiedExecValue === "boolean"
+      ? t("settings.backgroundTerminalRepairDesc", {
+          value: unifiedExecExternalStatus.explicitUnifiedExecValue
+            ? t("settings.backgroundTerminalValueEnabled")
+            : t("settings.backgroundTerminalValueDisabled"),
+        })
+      : t("settings.backgroundTerminalRepairDescUnknown");
+  const unifiedExecOfficialConfigDetail = !unifiedExecExternalStatus
+    ? null
+    : !unifiedExecExternalStatus.hasExplicitUnifiedExec
+      ? t("settings.backgroundTerminalOfficialConfigDefault")
+      : unifiedExecExternalStatus.explicitUnifiedExecValue === true
+        ? t("settings.backgroundTerminalOfficialConfigEnabled")
+        : unifiedExecExternalStatus.explicitUnifiedExecValue === false
+          ? t("settings.backgroundTerminalOfficialConfigDisabled")
+          : t("settings.backgroundTerminalOfficialConfigInvalid");
+  const unifiedExecOfficialConfigPriorityHint =
+    appSettings.codexUnifiedExecPolicy === "inherit"
+      ? t("settings.backgroundTerminalOfficialConfigInheritHint")
+      : t("settings.backgroundTerminalOfficialConfigDesktopOverrideHint");
+  const selectedUnifiedExecPolicyLabel =
+    unifiedExecPolicyOptions.find(
+      (option) => option.value === appSettings.codexUnifiedExecPolicy,
+    )?.label ?? t("settings.backgroundTerminalOptionInherit");
 
   const currentDialogModels =
     dialogTarget === "codex"
@@ -385,7 +668,7 @@ export function VendorSettingsPanel({
                   try {
                     await handleReloadCodexRuntimeConfig();
                   } finally {
-                    await loadCodexGlobalConfig();
+                    await refreshUnifiedExecConfigViews();
                   }
                 }}
                 disabled={codexReloadStatus === "reloading"}
@@ -419,6 +702,113 @@ export function VendorSettingsPanel({
                 {codex.codexProviderError}
               </div>
             )}
+            <div className="vendor-codex-runtime-card">
+              <div className="vendor-codex-runtime-card-copy">
+                <div className="vendor-codex-runtime-card-title-row">
+                  <div className="vendor-codex-runtime-card-title">
+                    {t("settings.backgroundTerminal")}
+                  </div>
+                  <span className="vendor-codex-runtime-card-badge">
+                    {t("settings.experimentalBadgeOfficial")}
+                  </span>
+                </div>
+                <div className="vendor-codex-runtime-card-description">
+                  {t("settings.backgroundTerminalDesc")}
+                </div>
+                <div className="settings-help">
+                  {t("settings.backgroundTerminalMarkerDesc")}
+                </div>
+                <div className="settings-help">
+                  {t("settings.backgroundTerminalApplyHint")}
+                </div>
+                <div className="settings-help">
+                  {t("settings.backgroundTerminalOfficialActionsDesc")}
+                </div>
+                {unifiedExecOfficialDefaultDetail ? (
+                  <div className="settings-help">{unifiedExecOfficialDefaultDetail}</div>
+                ) : null}
+                {unifiedExecOfficialConfigDetail ? (
+                  <div className="settings-help">{unifiedExecOfficialConfigDetail}</div>
+                ) : null}
+                <div className="settings-help">
+                  {unifiedExecOfficialConfigPriorityHint}
+                </div>
+                {unifiedExecExternalStatusLoading ? (
+                  <div className="settings-help">{t("settings.loading")}</div>
+                ) : null}
+                {unifiedExecExternalStatusError ? (
+                  <div className="settings-help">{unifiedExecExternalStatusError}</div>
+                ) : null}
+                {shouldShowUnifiedExecRepairPrompt && unifiedExecRepairDescription ? (
+                  <div className="settings-help">
+                    <div>{t("settings.backgroundTerminalRepairTitle")}</div>
+                    <div>{unifiedExecRepairDescription}</div>
+                    <div className="vendor-codex-runtime-card-actions">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDismissUnifiedExecRepairPrompt(true)}
+                        disabled={unifiedExecRepairBusy}
+                      >
+                        {t("settings.backgroundTerminalRepairKeep")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                {unifiedExecRepairNotice ? (
+                  <div className="settings-help">{unifiedExecRepairNotice.message}</div>
+                ) : null}
+                <div className="vendor-codex-runtime-card-actions">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleSetUnifiedExecOfficialOverride(true)}
+                    disabled={unifiedExecRepairBusy}
+                  >
+                    {t("settings.backgroundTerminalOfficialWriteEnabled")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleSetUnifiedExecOfficialOverride(false)}
+                    disabled={unifiedExecRepairBusy}
+                  >
+                    {t("settings.backgroundTerminalOfficialWriteDisabled")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handleRestoreUnifiedExecOfficialDefault()}
+                    disabled={unifiedExecRepairBusy}
+                  >
+                    {t("settings.backgroundTerminalRepairRestore")}
+                  </Button>
+                </div>
+              </div>
+              <div className="vendor-codex-runtime-card-control">
+                <Select
+                  value={appSettings.codexUnifiedExecPolicy}
+                  onValueChange={handleUnifiedExecPolicyChange}
+                >
+                  <SelectTrigger
+                    aria-label={t("settings.backgroundTerminal")}
+                    className="vendor-codex-runtime-card-select"
+                  >
+                    <SelectValue>{selectedUnifiedExecPolicyLabel}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup className="vendor-codex-runtime-card-select-popup">
+                    {unifiedExecPolicyOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
+            </div>
             <CurrentCodexGlobalConfigCard
               configLoading={codexGlobalConfigLoading}
               configContent={codexGlobalConfigContent}
