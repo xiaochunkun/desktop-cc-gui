@@ -193,3 +193,64 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 72: Windows Claude 流式输出逐字变慢修复
+
+**Date**: 2026-04-21
+**Task**: Windows Claude 流式输出逐字变慢修复
+**Branch**: `feature/f-v0.4.6`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+- 修复 Windows 下 Claude realtime 输出过碎，导致正文一个字一个字缓慢蹦出的体验回归。
+- 保持 macOS / Linux 现有流式行为不变，不回退之前为避免重复渲染做的 realtime 修正。
+
+## 主要改动
+- 在 `src-tauri/src/engine/claude.rs` 中为 Claude `TextDelta` 新增短时间缓冲与统一 flush 入口。
+- 仅在 Windows 构建下启用 `32ms` 聚合窗口，非 Windows 平台保持即时 flush。
+- 在非文本事件、读取错误、EOF、流式错误前先 flush 缓冲，避免漏字、乱序或尾部丢失。
+- 在 `src-tauri/src/engine/claude/tests_core.rs` 中补充缓冲行为单测，并将过期测试改为确定性时间回退写法。
+- 在 `src-tauri/src/engine/claude/tests_stream.rs` 中新增 `send_message` 过程级回归测试，使用 fake Claude CLI 覆盖真实 spawn -> stdout lines -> event broadcast -> turn completed 链路。
+
+## 涉及模块
+- `src-tauri/src/engine/claude.rs`
+- `src-tauri/src/engine/claude/tests_core.rs`
+- `src-tauri/src/engine/claude/tests_stream.rs`
+
+## 验证结果
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --all` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml send_message_batches_windows_text_deltas_without_delaying_other_platforms` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml buffered_claude_text_delta` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml convert_event_supports_assistant_message_delta_aliases` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml convert_event_supports_message_snapshot_aliases` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml convert_event_prefers_combined_text_when_thinking_and_text_coexist` 通过
+- `cargo test --manifest-path src-tauri/Cargo.toml convert_event_supports_reasoning_block_alias` 通过
+
+## 后续事项
+- 尚未做真实 Windows + 真实 Claude CLI 的人工体验验证；当前结论基于代码 review 与过程级回归测试。
+- 工作区里仍有未跟踪的 OpenSpec 目录，本次未纳入提交。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `41aba520` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
