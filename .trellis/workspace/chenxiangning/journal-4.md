@@ -1236,3 +1236,63 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 124: Split engine OpenCode command surface
+
+**Date**: 2026-04-23
+**Task**: Split engine OpenCode command surface
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 将 src-tauri/src/engine/commands.rs 中的 OpenCode command surface 抽到独立子模块。
+- 保持 crate::engine::* outward surface、command_registry 名称和 workspace cleanup helper 不变。
+
+主要改动:
+- 新增 src-tauri/src/engine/commands_opencode.rs，承载 OpenCode commands/agents/session/provider/mcp/lsp 子域。
+- 在 src-tauri/src/engine/commands.rs 中挂载并 re-export commands_opencode 子模块，保留 send/interrupt 主链。
+- 新增 OpenSpec change split-engine-opencode-command-surface 与 Trellis task 04-23-split-engine-opencode-command-surface。
+- 重算 docs/architecture/large-file-baseline.{md,json} 与 large-file-near-threshold-watchlist.md。
+
+涉及模块:
+- src-tauri/src/engine/commands.rs
+- src-tauri/src/engine/commands_opencode.rs
+- openspec/changes/split-engine-opencode-command-surface/**
+- .trellis/tasks/04-23-split-engine-opencode-command-surface/**
+- docs/architecture/large-file-*.md
+
+验证结果:
+- cargo test --manifest-path src-tauri/Cargo.toml engine:: 通过（lib 243 + daemon 205 测试通过）
+- npm run typecheck 通过
+- npm run check:large-files:gate 通过（found=0）
+- npm run check:large-files:baseline 通过并更新 baseline
+- npm run check:large-files:near-threshold:baseline 通过并更新 watchlist
+- openspec status --change split-engine-opencode-command-surface 显示 4/4 artifacts complete
+
+后续事项:
+- 目前 retained hard debt 已清零；下一步可按 watchlist 决定是否继续拆 bridge-runtime-critical 的 warn 项。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2384c5a6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
