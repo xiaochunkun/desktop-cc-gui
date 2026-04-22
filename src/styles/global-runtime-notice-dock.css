@@ -1,7 +1,7 @@
 .global-runtime-notice-dock-shell {
   position: fixed;
-  right: 20px;
-  bottom: max(20px, env(safe-area-inset-bottom, 0px) + 20px);
+  right: 4px;
+  bottom: max(4px, env(safe-area-inset-bottom, 0px) + 4px);
   z-index: 42;
 }
 
