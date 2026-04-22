@@ -2,6 +2,14 @@
 
 `ccgui_0.4.6` 在 Claude 对话路径上出现了一个跨平台消息幕布回归：至少有 Windows 11 与 macOS M1 Pro 用户反馈，在完成首轮对话后再次发送消息时，聊天区会短暂闪现后变为空白，而 Codex 路径正常。现有代码已经补上了部分修复，但当前 mitigation 仍主要按 `Windows + Claude + processing` 收口，和 issue 中的 macOS 复现事实不一致，因此需要把问题从“平台补丁”提升为“Claude live render stability contract”。
 
+## 代码核对状态（2026-04-22）
+
+- `Messages.tsx` 已把 Claude render-safe mode 的主判据收敛到归一化 `conversationState.meta.isThinking`，仅在缺少 `conversationState` 时才回退 legacy `isThinking`；这与提案里“normalized processing state 优先”的定义一致。
+- 桌面保护范围已经扩到 Windows + macOS：`Messages.windows-render-mitigation.test.tsx` 明确断言两类 desktop surface 都会在 Claude live conversation 下加上 `claude-render-safe`，且 non-Claude engine 不会误触发。
+- stale props 边界已覆盖：同一测试文件中已经验证“prop `isThinking` 过时，但 normalized conversation state 仍在 processing”时，render-safe class 仍会开启；这正是 proposal 中要求的 normalized-state truth。
+- 样式守卫也已落地：`layout-swapped-platform-guard.test.ts` 与 `src/styles/messages.part1.css` 共同确保 render-safe 降级只作用于 desktop messages shell，不把 Codex 或非目标 surface 一起降级。
+- `tasks.md` 的实现、回归测试与严格校验项都已闭环，本 change 已完成 sync + archive。
+
 ## 目标与边界
 
 - 明确将该问题定义为 `Claude live processing` 下的 chat canvas 渲染稳定性缺陷，而不是单台机器或单一平台异常。

@@ -13,4 +13,4 @@
 ## 3. Verification
 
 - [x] 3.1 更新 sidebar menu / engine controller / Sidebar 相关测试，覆盖“菜单打开不自动探测，手动 refresh 才探测，且 refresh 结果可在当前菜单中直接回显”。
-- [ ] 3.2 运行 targeted tests 与 frontend quality gates，确认无行为回退。
+- [x] 3.2 运行 targeted tests 与 frontend quality gates，确认无行为回退。
