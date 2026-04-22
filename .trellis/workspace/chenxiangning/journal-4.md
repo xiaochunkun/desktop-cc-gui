@@ -1404,3 +1404,66 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 127: 收敛首批 exhaustive-deps 告警
+
+**Date**: 2026-04-23
+**Task**: 收敛首批 exhaustive-deps 告警
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标:
+- 建立 react-hooks/exhaustive-deps 告警治理提案，并落地第一批低风险 P0 warning 修复。
+
+主要改动:
+- 新建 OpenSpec change `triage-exhaustive-deps-warning-batches` 与对应 Trellis task，完成 proposal/design/specs/tasks/PRD。
+- 修复 9 个 frontend 文件中的 11 条低风险 exhaustive-deps warning。
+- 识别并延期 `ButtonArea` 与 `useSessionRadarFeed` 的 sentinel-pattern warning，避免机械删除依赖改坏重算语义。
+- 将 warning 盘点更新为 `109 -> 98`，文件数更新为 `25 -> 16`。
+
+涉及模块:
+- src/features/files/components/FileViewPanel.tsx
+- src/features/git/components/GitDiffPanel.tsx
+- src/features/messages/components/toolBlocks/ReadToolBlock.tsx
+- src/features/opencode/components/OpenCodeControlPanel.tsx
+- src/features/project-memory/components/ProjectMemoryPanel.tsx
+- src/features/search/components/SearchPalette.tsx
+- src/features/settings/components/settings-view/hooks/useSystemResolvedTheme.ts
+- src/features/settings/components/settings-view/sections/WebServiceSettings.tsx
+- src/features/spec/hooks/useSpecHub.ts
+- openspec/changes/triage-exhaustive-deps-warning-batches/**
+- .trellis/tasks/04-23-triage-exhaustive-deps-warning-batches/prd.md
+
+验证结果:
+- npm run typecheck 通过
+- npm run lint 通过（剩余 98 条 exhaustive-deps warning，0 errors）
+- npx vitest run src/features/files/components/FileViewPanel.test.tsx src/features/git/components/GitDiffPanel.test.tsx src/features/messages/components/toolBlocks/ReadToolBlock.test.tsx src/features/spec/hooks/useSpecHub.test.tsx src/features/opencode/components/OpenCodeControlPanel.test.tsx src/features/settings/components/settings-view/sections/WebServiceSettings.test.tsx src/features/project-memory/components/ProjectMemoryPanel.test.tsx src/features/search/components/SearchPalette.test.tsx 通过（8 files / 111 tests）
+- openspec status --change triage-exhaustive-deps-warning-batches 显示 4/4 artifacts complete
+
+后续事项:
+- 下一轮优先在 sentinel-pattern warning 与 git-history hotspot 之间二选一继续治理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0c51f80c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
