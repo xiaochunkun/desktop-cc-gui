@@ -1053,3 +1053,75 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 155: Computer Use 官方 parent handoff 只读发现
+
+**Date**: 2026-04-23
+**Task**: Computer Use 官方 parent handoff 只读发现
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+
+推进 OpenSpec 变更 `discover-computer-use-official-parent-handoff`，在不直接执行官方 helper、不修改官方插件资产的前提下，给 Computer Use macOS 阶段补齐官方 parent handoff 只读发现能力。
+
+## 主要改动
+
+- 后端 `src-tauri/src/computer_use/mod.rs` 新增 official parent handoff discovery：读取 Codex app、Computer Use service/helper bundle、parent code requirement、application group、URL scheme、XPC service 与 MCP descriptor 证据。
+- 将 diagnostics 分类收口为 `handoff_candidate_found`、`handoff_unavailable`、`requires_official_parent`、`unknown`，并复用现有 host-contract diagnostics command 和 single-flight lock。
+- 前端 Computer Use 状态页新增 official parent handoff discovery 证据区，展示 parent team、app group、bundle id、candidate methods、diagnostics message。
+- 同步 `src/types.ts`、`src/services/tauri.ts`、i18n 文案、组件测试、hook 测试和 Tauri serialization 测试。
+- 更新 `.trellis/spec/backend/computer-use-bridge.md` 与 `.trellis/spec/frontend/computer-use-bridge.md`，沉淀 executable contract。
+- 归档 OpenSpec change 到 `openspec/changes/archive/2026-04-23-discover-computer-use-official-parent-handoff/`，同步主 specs，并新增手工验证矩阵文档。
+
+## 关键结论
+
+- 本机官方 Codex/Computer Use metadata 显示 helper 依赖 OpenAI 官方 parent contract：team identifier 为 `2DC432GLL2`，service/helper application group 为 `2DC432GLL2.com.openai.sky.CUAService`。
+- 当前只发现 generic `codex://` URL scheme，没有发现 Computer Use 专用公开 handoff API。
+- 因此本阶段正确策略是 diagnostics-only：证明边界、展示证据、阻止 direct helper exec，而不是继续让用户点权限或尝试伪造 parent。
+
+## 验证结果
+
+- `cargo test --manifest-path src-tauri/Cargo.toml computer_use -- --nocapture` 通过。
+- `rustfmt --edition 2021 --check src-tauri/src/computer_use/mod.rs` 通过。
+- `npx vitest run src/services/tauri.test.ts src/features/computer-use/components/ComputerUseStatusCard.test.tsx src/features/computer-use/hooks/useComputerUseHostContractDiagnostics.test.tsx` 通过。
+- `npm run typecheck` 通过。
+- `npm run lint` 通过。
+- `npm run check:runtime-contracts` 通过。
+- `npm run doctor:strict` 通过。
+- `npm run check:large-files:gate` 通过。
+- `cargo test --manifest-path src-tauri/Cargo.toml` 通过。
+- `npm run test` 通过。
+- `openspec validate discover-computer-use-official-parent-handoff --type change --strict --no-interactive` 通过。
+- `openspec validate --all --strict --no-interactive` 通过，176 items passed。
+- `git diff --check` 通过。
+
+## 后续事项
+
+- 若后续官方 Codex 暴露 Computer Use handoff API，再新开 proposal 进入 runtime integration。
+- 当前不建议继续 direct helper exec、bundle copy/resign 或修改官方 manifest/cache，这些都违背官方 parent contract 边界。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e34808e9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
