@@ -816,3 +816,56 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 151: Propose Claude Windows streaming visibility fix
+
+**Date**: 2026-04-23
+**Task**: Propose Claude Windows streaming visibility fix
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：将用户确认的“Claude Code 实时对话流式输出在 Windows 上卡在前几个字，完成后整体输出”收敛为 OpenSpec 提案，并明确该问题与模型/provider 无关。
+
+主要改动：
+- 新建 OpenSpec change：fix-claude-windows-streaming-visibility-stall。
+- 重写 proposal，将问题定义为 Claude Code engine-level realtime stream visibility failure，而不是 Qwen/model/provider 特例。
+- 补齐 specs/design/tasks 四件套：新增 claude-code-realtime-stream-visibility capability，并修改 stream latency diagnostics、provider stream mitigation、render surface stability 三个相关 capability delta。
+- 新建 Trellis task：04-23-fix-claude-windows-streaming-visibility-stall，并记录 PRD。
+
+涉及模块：
+- openspec/changes/fix-claude-windows-streaming-visibility-stall/**
+- .trellis/tasks/04-23-fix-claude-windows-streaming-visibility-stall/**
+
+验证结果：
+- openspec status --change fix-claude-windows-streaming-visibility-stall 显示 4/4 artifacts complete。
+- POSTHOG_DISABLED=1 OPENSPEC_TELEMETRY_DISABLED=1 openspec validate fix-claude-windows-streaming-visibility-stall --type change --strict --no-interactive 通过。
+- git diff --check 通过。
+
+后续事项：
+- 下一步进入 apply，按 tasks 先实现 provider-independent visible-output-stall-after-first-delta diagnostics，再实现 Claude Code + Windows + evidence mitigation profile。
+- 必须补 Windows native Claude Code 手测矩阵，不能用 Qwen-compatible provider 或其他模型路径替代。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a13e95724be38fa755bec57053f2d2f7763ecd20` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

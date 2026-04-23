@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 150
+- **Total Sessions**: 151
 - **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~818 | Active |
+| `journal-5.md` | ~871 | Active |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
 | `journal-2.md` | ~1960 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 151 | 2026-04-23 | Propose Claude Windows streaming visibility fix | `a13e95724be38fa755bec57053f2d2f7763ecd20` | `feature/v-0.4.8` |
 | 150 | 2026-04-23 | 修复 Linux AppImage Wayland 启动兼容守卫 | `a77dd3d8` | `feature/v-0.4.8` |
 | 149 | 2026-04-23 | 强化中文提交与记录规则 | `d3c725f3` | `feature/v-0.4.8` |
 | 148 | 2026-04-23 | Recalibrate OpenSpec snapshot and strict validation | `e9e98dae` | `feature/v-0.4.8` |
