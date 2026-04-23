@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 153
+- **Total Sessions**: 154
 - **Last Active**: 2026-04-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1013 | Active |
+| `journal-5.md` | ~1055 | Active |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
 | `journal-2.md` | ~1960 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 154 | 2026-04-23 | Computer Use 宿主契约诊断链路 | `599eb605` | `feature/v-0.4.8` |
 | 153 | 2026-04-23 | 归档 Computer Use 阶段2并创建宿主契约调查提案 | `039d8b2d` | `feature/v-0.4.8` |
 | 152 | 2026-04-23 | 落地 Computer Use helper bridge 显式验证通道 | `62bfbff2` | `feature/v-0.4.8` |
 | 151 | 2026-04-23 | Propose Claude Windows streaming visibility fix | `a13e95724be38fa755bec57053f2d2f7763ecd20` | `feature/v-0.4.8` |

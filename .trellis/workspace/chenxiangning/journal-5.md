@@ -1011,3 +1011,45 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 154: Computer Use 宿主契约诊断链路
+
+**Date**: 2026-04-23
+**Task**: Computer Use 宿主契约诊断链路
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+完成并归档 OpenSpec 变更 investigate-computer-use-helper-host-contract，落地 macOS-only host-contract diagnostics，并保留 Windows explicit unsupported 边界。
+
+### Main Changes
+
+| 项目 | 内容 |
+|------|------|
+| 任务目标 | 继续推进 Computer Use 新提案，从实现完成推进到 OpenSpec 归档与业务提交。 |
+| 主要改动 | 新增 `run_computer_use_host_contract_diagnostics` 后端 command、结构化 diagnostics result/evidence、前端 typed wrapper、`useComputerUseHostContractDiagnostics` hook、状态页 CTA/evidence 展示与 i18n 文案。 |
+| 安全边界 | diagnostics 仅在 macOS 且用户显式点击后运行；遇到 nested `SkyComputerUseClient.app/Contents/MacOS/*` 不做 direct exec；不会自动进入 conversation runtime integration。 |
+| 平台边界 | Windows 继续返回 explicit unsupported，不暴露 diagnostics execution path。 |
+| 规范同步 | 已归档 `openspec/changes/archive/2026-04-23-investigate-computer-use-helper-host-contract/`；同步 `openspec/specs/**`；更新 `.trellis/spec/backend/computer-use-bridge.md` 与 `.trellis/spec/frontend/computer-use-bridge.md`。 |
+| 验证结果 | 通过 `cargo test --manifest-path src-tauri/Cargo.toml`、`npm run test`、`npm run lint`、`npm run typecheck`、`npm run check:runtime-contracts`、`npm run doctor:strict`、`npm run check:large-files:gate`、`openspec validate --all --strict --no-interactive`、`git diff --check`。 |
+| 后续事项 | 建议在最新 macOS 状态页手动点击 host-contract diagnostics，核对 evidence 文案与系统 crash report 是否消失。 |
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `599eb605` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
