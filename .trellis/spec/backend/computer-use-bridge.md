@@ -148,6 +148,7 @@ struct ComputerUseOfficialParentHandoffDiscovery {
   - MUST single-flight；并发触发返回 `already_running` 或等价结构化结果
   - MUST 有硬超时
   - MUST 支持 `MOSSX_DISABLE_COMPUTER_USE_ACTIVATION=1|true|yes|on` 回退到 `activation_disabled`
+  - MUST 对 `~/.codex/plugins/cache/openai-bundled/computer-use/<version>` 下的 CLI plugin helper 走 static launch-contract verification，不得由 mossx direct exec `SkyComputerUseClient`
   - MUST NOT 接入聊天发送、设置保存、MCP 管理等普通主流程
 - `run_computer_use_host_contract_diagnostics` 是 `host_incompatible` 后的显式 evidence lane：
   - MUST 与 activation probe 复用同一 single-flight lock，避免并发 helper investigation
@@ -170,13 +171,16 @@ struct ComputerUseOfficialParentHandoffDiscovery {
 
 - `macOS`：
   - MUST 探测官方 `Codex.app`
+  - MUST 优先探测 Codex CLI plugin cache：`~/.codex/plugins/cache/openai-bundled/computer-use/<version>/.mcp.json`
   - MUST 探测 bundled marketplace / plugin manifest / helper descriptor
   - MUST 将 `.mcp.json` 中的 `command` 按 `descriptor dir + cwd` 解析真实 helper 路径
   - MUST 优先读取 `mcpServers["computer-use"]`；当存在多个 server 且缺少该 key 时，MUST 判为 descriptor ambiguous，不得随便取第一个 server
   - MUST 拒绝空 `command`、非数组 `args`、非字符串 arg，避免用损坏 descriptor 拼出错误 launch contract
   - helper present 判定 MUST 使用 `is_file()`，不能把目录存在误判成可执行 helper
   - nested `.app/Contents/MacOS/...` helper 在非官方 Codex parent host 下 MUST 走 diagnostics-only fallback，返回 `host_incompatible`，不得直接 exec 反复触发系统 crash report
+  - 例外：当 helper path 位于 Codex CLI plugin cache 时，MUST 将其视为 Codex CLI plugin launch contract，activation 只能静态验证 descriptor/helper/cache evidence，不能 direct exec helper
   - host-contract diagnostics 遇到 nested helper MUST 返回 `requires_official_parent` 或等价证据分类，不得把 direct exec 当成诊断手段
+  - host-contract diagnostics 遇到 CLI plugin cache helper MUST NOT 返回 `requires_official_parent`；MUST 返回 `handoff_verified` 或等价 CLI plugin contract evidence
 - `Windows`：
   - MUST 固定返回 `unsupported`
   - MUST NOT 尝试解析任何 `macOS` bundle/helper 路径
@@ -208,9 +212,12 @@ struct ComputerUseOfficialParentHandoffDiscovery {
 | 权限未验证 | `blocked` | `permission_required` |
 | app approvals 未验证 | `blocked` | `approval_required` |
 | activation kill switch 关闭 | activation result `failed` | `activation_disabled` |
+| CLI plugin cache descriptor/helper 存在 | activation result `blocked` 或 `verified` | static launch-contract verified，仍保留权限/approval blockers |
 | nested helper 不能由当前 host 直接执行 | activation result `failed` | `host_incompatible` |
 | host-contract diagnostics 识别 nested helper + 非官方 parent | diagnostics result | `requires_official_parent` |
+| host-contract diagnostics 识别 CLI plugin cache helper | diagnostics result | `handoff_verified` / `codex_cli_plugin_cache_mcp_descriptor` |
 | official parent handoff discovery 只发现 team/application group parent contract | handoff discovery | `requires_official_parent` |
+| official parent handoff discovery 发现 CLI plugin cache `.mcp.json` | handoff discovery | `handoff_candidate_found`，candidate method `mcp_descriptor` |
 | official parent handoff discovery 发现 URL/XPC/MCP 候选入口 | handoff discovery | `handoff_candidate_found`，但不得自动 ready |
 | helper bridge 已验证但权限/approval 仍未确认 | diagnostics result | `manual_permission_required` |
 | 非 macOS host 调用 host diagnostics | diagnostics result | `unknown`，且不执行 helper |
@@ -242,6 +249,9 @@ struct ComputerUseOfficialParentHandoffDiscovery {
   - missing app / missing plugin / plugin disabled
   - false-positive ready guard
   - relative helper path resolution against `.mcp.json` `command + cwd`
+  - CLI plugin cache descriptor priority over Codex.app bundled descriptor
+  - CLI plugin cache helper static activation verification without direct exec
+  - CLI plugin cache helper host-contract classification
   - descriptor 多 server 时优先 `computer-use`，ambiguous/invalid descriptor 不启动 helper
   - kill switch truthy values
   - nested app-bundle helper diagnostics-only fallback

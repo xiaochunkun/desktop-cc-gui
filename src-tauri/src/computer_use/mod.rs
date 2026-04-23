@@ -380,6 +380,7 @@ pub(crate) async fn run_computer_use_activation_probe(
         *stored = Some(verification.clone());
     }
 
+    let verified_bridge_message = probe_execution.diagnostic_message.clone();
     let refreshed_context =
         tokio::task::spawn_blocking(move || resolve_activation_context(Some(&verification)))
             .await
@@ -391,15 +392,14 @@ pub(crate) async fn run_computer_use_activation_probe(
         ComputerUseAvailabilityStatus::Ready => (
             ComputerUseActivationOutcome::Verified,
             None,
-            Some("Computer Use helper bridge verified with a bounded '--help' probe.".to_string()),
+            Some(verified_bridge_message.clone()),
         ),
         ComputerUseAvailabilityStatus::Blocked => (
             ComputerUseActivationOutcome::Blocked,
             Some(ComputerUseActivationFailureKind::RemainingBlockers),
-            Some(
-                "Computer Use helper bridge verified, but remaining permissions or approvals still require manual confirmation."
-                    .to_string(),
-            ),
+            Some(format!(
+                "{verified_bridge_message} Remaining permissions or approvals still require manual confirmation."
+            )),
         ),
         _ => (
             ComputerUseActivationOutcome::Failed,
@@ -601,7 +601,14 @@ fn detect_computer_use_snapshot() -> ComputerUseDetectionSnapshot {
     let cache_root = resolve_computer_use_cache_root();
     if let Some(manifest_path) = detect_plugin_manifest_path(cache_root.as_deref()) {
         snapshot.plugin_detected = true;
+        let plugin_root = plugin_root_from_manifest_path(&manifest_path);
         snapshot.plugin_manifest_path = path_to_string(manifest_path);
+        if let Some(descriptor_path) = plugin_root
+            .map(|root| root.join(".mcp.json"))
+            .filter(|path| path.is_file())
+        {
+            apply_helper_descriptor_path(&mut snapshot, &descriptor_path);
+        }
     }
 
     snapshot
@@ -656,7 +663,7 @@ fn classify_status(
         );
     }
 
-    if !snapshot.codex_app_detected {
+    if !snapshot.codex_app_detected && !snapshot.plugin_detected {
         return (
             ComputerUseAvailabilityStatus::Unavailable,
             vec![ComputerUseBlockedReason::CodexAppMissing],
@@ -721,7 +728,6 @@ fn is_activation_probe_eligible(status: &ComputerUseBridgeStatus) -> bool {
     status.activation_enabled
         && status.platform == "macos"
         && status.status == ComputerUseAvailabilityStatus::Blocked
-        && status.codex_app_detected
         && status.plugin_detected
         && status.plugin_enabled
         && status.helper_path.is_some()
@@ -887,6 +893,10 @@ fn classify_host_contract_diagnostics(
         return ComputerUseHostContractDiagnosticsKind::Unknown;
     };
 
+    if path_looks_like_codex_cli_computer_use_cache(path) {
+        return ComputerUseHostContractDiagnosticsKind::HandoffVerified;
+    }
+
     if path_looks_like_nested_app_binary(path) {
         if current_host_path
             .map(|path| path.contains("/Codex.app/"))
@@ -906,6 +916,13 @@ fn host_contract_handoff_method(
     helper_path: Option<&str>,
 ) -> &'static str {
     match kind {
+        ComputerUseHostContractDiagnosticsKind::HandoffVerified
+            if helper_path
+                .map(Path::new)
+                .is_some_and(path_looks_like_codex_cli_computer_use_cache) =>
+        {
+            "codex_cli_plugin_cache_mcp_descriptor"
+        }
         ComputerUseHostContractDiagnosticsKind::RequiresOfficialParent
             if helper_path
                 .map(Path::new)
@@ -938,7 +955,7 @@ fn host_contract_diagnostic_message(kind: ComputerUseHostContractDiagnosticsKind
             "No supported official handoff method was detected for this helper from the current host."
         }
         ComputerUseHostContractDiagnosticsKind::HandoffVerified => {
-            "Current host path appears to satisfy the official Codex parent boundary. This is diagnostic evidence only, not runtime enablement."
+            "Computer Use helper has a supported Codex parent or CLI plugin launch contract. This is diagnostic evidence only, not runtime enablement."
         }
         ComputerUseHostContractDiagnosticsKind::ManualPermissionRequired => {
             "Helper bridge identity is no longer the primary blocker; manual permissions or app approvals still need review."
@@ -1038,19 +1055,35 @@ fn discover_official_parent_handoff(
     }
 
     let mcp_descriptor_path = snapshot.helper_descriptor_path.clone();
-    if snapshot
+    let parsed_mcp_descriptor = snapshot
         .helper_descriptor_path
         .as_deref()
         .map(Path::new)
-        .and_then(parse_helper_descriptor)
-        .is_some_and(|descriptor| !path_looks_like_nested_app_binary(&descriptor.command_path))
-    {
+        .and_then(parse_helper_descriptor);
+    if parsed_mcp_descriptor.as_ref().is_some_and(|descriptor| {
+        snapshot
+            .helper_descriptor_path
+            .as_deref()
+            .map(Path::new)
+            .is_some_and(path_looks_like_codex_cli_computer_use_cache)
+            || path_looks_like_codex_cli_computer_use_cache(&descriptor.command_path)
+            || !path_looks_like_nested_app_binary(&descriptor.command_path)
+    }) {
         methods.push(ComputerUseOfficialParentHandoffMethod {
             method: "mcp_descriptor".to_string(),
             source_path: mcp_descriptor_path.clone(),
             identifier: COMPUTER_USE_MCP_SERVER_NAME.to_string(),
-            confidence: "medium".to_string(),
-            notes: "MCP descriptor points to a non-nested app-bundle command candidate."
+            confidence: if parsed_mcp_descriptor
+                .as_ref()
+                .is_some_and(|descriptor| {
+                    path_looks_like_codex_cli_computer_use_cache(&descriptor.command_path)
+                })
+            {
+                "high".to_string()
+            } else {
+                "medium".to_string()
+            },
+            notes: "MCP descriptor is treated as a Codex CLI/plugin handoff candidate. This is evidence only and was not launched by mossx."
                 .to_string(),
         });
     }
@@ -1438,6 +1471,43 @@ async fn run_helper_bridge_probe(
         };
     }
 
+    if launch_spec_looks_like_codex_cli_plugin_contract(&launch_spec) {
+        if !launch_spec.command_path.is_file() {
+            return ComputerUseHelperProbeExecution {
+                succeeded: false,
+                failure_kind: Some(ComputerUseActivationFailureKind::LaunchFailed),
+                diagnostic_message: "Codex CLI Computer Use helper path is not a file.".to_string(),
+                stderr_snippet: None,
+                exit_code: None,
+                duration_ms: started_at.elapsed().as_millis() as u64,
+            };
+        }
+
+        if !launch_spec.args.iter().any(|arg| arg == "mcp") {
+            return ComputerUseHelperProbeExecution {
+                succeeded: false,
+                failure_kind: Some(ComputerUseActivationFailureKind::IneligibleHost),
+                diagnostic_message:
+                    "Codex CLI Computer Use descriptor is missing the expected mcp argument."
+                        .to_string(),
+                stderr_snippet: None,
+                exit_code: None,
+                duration_ms: started_at.elapsed().as_millis() as u64,
+            };
+        }
+
+        return ComputerUseHelperProbeExecution {
+            succeeded: true,
+            failure_kind: None,
+            diagnostic_message:
+                "Codex CLI Computer Use plugin cache launch contract verified. mossx did not direct-exec the helper; Codex CLI remains the supported parent."
+                    .to_string(),
+            stderr_snippet: None,
+            exit_code: None,
+            duration_ms: started_at.elapsed().as_millis() as u64,
+        };
+    }
+
     let mut command = crate::utils::async_command(&launch_spec.command_path);
     command
         .args(&launch_spec.args)
@@ -1561,6 +1631,7 @@ fn resolve_helper_probe_launch_spec(
 fn should_use_diagnostics_only_probe(command_path: &Path) -> bool {
     cfg!(target_os = "macos")
         && path_looks_like_nested_app_binary(command_path)
+        && !path_looks_like_codex_cli_computer_use_cache(command_path)
         && !current_host_looks_like_official_codex()
 }
 
@@ -1573,6 +1644,26 @@ fn current_host_looks_like_official_codex() -> bool {
 
 fn path_looks_like_nested_app_binary(path: &Path) -> bool {
     path.to_string_lossy().contains(".app/Contents/MacOS/")
+}
+
+fn launch_spec_looks_like_codex_cli_plugin_contract(
+    launch_spec: &ComputerUseHelperLaunchSpec,
+) -> bool {
+    path_looks_like_codex_cli_computer_use_cache(&launch_spec.command_path)
+        || path_looks_like_codex_cli_computer_use_cache(&launch_spec.current_dir)
+}
+
+fn path_looks_like_codex_cli_computer_use_cache(path: &Path) -> bool {
+    if resolve_computer_use_cache_root()
+        .as_ref()
+        .is_some_and(|root| path.starts_with(root))
+    {
+        return true;
+    }
+
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .contains("/plugins/cache/openai-bundled/computer-use/")
 }
 
 fn output_snippet(output: &str) -> Option<String> {
@@ -1626,6 +1717,17 @@ fn detect_plugin_manifest_path(cache_root: Option<&Path>) -> Option<PathBuf> {
             manifest_path.is_file().then_some(manifest_path)
         })
         .max_by(|left, right| compare_plugin_manifest_paths(left, right))
+}
+
+fn plugin_root_from_manifest_path(manifest_path: &Path) -> Option<PathBuf> {
+    manifest_path
+        .parent()
+        .and_then(|plugin_dir| {
+            (plugin_dir.file_name().and_then(|name| name.to_str()) == Some(".codex-plugin"))
+                .then_some(plugin_dir)
+        })
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
 }
 
 fn compare_plugin_manifest_paths(left: &PathBuf, right: &PathBuf) -> Ordering {
@@ -1719,6 +1821,16 @@ struct ComputerUseHelperDescriptor {
 
 pub(crate) fn parse_helper_command_path(path: &Path) -> Option<String> {
     parse_helper_descriptor(path).and_then(|descriptor| path_to_string(descriptor.command_path))
+}
+
+fn apply_helper_descriptor_path(snapshot: &mut ComputerUseDetectionSnapshot, path: &Path) {
+    snapshot.helper_descriptor_path = path_to_string(path.to_path_buf());
+    snapshot.helper_path = parse_helper_command_path(path);
+    snapshot.helper_present = snapshot
+        .helper_path
+        .as_ref()
+        .map(PathBuf::from)
+        .is_some_and(|path| path.is_file());
 }
 
 fn parse_helper_descriptor(path: &Path) -> Option<ComputerUseHelperDescriptor> {
@@ -1867,6 +1979,22 @@ mod tests {
             ),
             diagnostic_message: None,
         }
+    }
+
+    fn cli_cache_test_root(prefix: &str) -> (PathBuf, PathBuf) {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_root = std::env::temp_dir().join(format!("{prefix}-{unique}"));
+        let plugin_root = temp_root
+            .join("plugins")
+            .join("cache")
+            .join("openai-bundled")
+            .join("computer-use")
+            .join("1.0.755");
+
+        (temp_root, plugin_root)
     }
 
     #[test]
@@ -2052,6 +2180,36 @@ mod tests {
         assert_eq!(
             permission_kind,
             ComputerUseHostContractDiagnosticsKind::ManualPermissionRequired
+        );
+    }
+
+    #[test]
+    fn host_contract_classifies_cli_cache_helper_as_handoff_verified() {
+        let status = ComputerUseBridgeStatus {
+            helper_path: Some(
+                "/Users/demo/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient"
+                    .to_string(),
+            ),
+            helper_descriptor_path: Some(
+                "/Users/demo/.codex/plugins/cache/openai-bundled/computer-use/1.0.755/.mcp.json"
+                    .to_string(),
+            ),
+            ..blocked_bridge_status(vec![ComputerUseBlockedReason::HelperBridgeUnverified])
+        };
+
+        let kind = classify_host_contract_diagnostics(
+            &status,
+            status.helper_path.as_deref(),
+            Some("/Applications/Mossx.app/Contents/MacOS/mossx"),
+        );
+
+        assert_eq!(
+            kind,
+            ComputerUseHostContractDiagnosticsKind::HandoffVerified
+        );
+        assert_eq!(
+            host_contract_handoff_method(kind, status.helper_path.as_deref()),
+            "codex_cli_plugin_cache_mcp_descriptor"
         );
     }
 
@@ -2271,6 +2429,59 @@ mod tests {
     }
 
     #[test]
+    fn discover_official_parent_handoff_treats_cli_cache_descriptor_as_candidate() {
+        let (temp_root, root) = cli_cache_test_root("computer-use-cli-cache");
+        let service_app = root.join("Codex Computer Use.app");
+        let helper_app = service_app
+            .join("Contents")
+            .join("SharedSupport")
+            .join("SkyComputerUseClient.app");
+        let helper_macos = helper_app.join("Contents").join("MacOS");
+        fs::create_dir_all(&helper_macos).expect("create helper layout");
+        fs::create_dir_all(helper_app.join("Contents").join("Resources"))
+            .expect("create helper resources");
+        fs::create_dir_all(root.join(".codex-plugin")).expect("create manifest directory");
+        let helper_path = helper_macos.join("SkyComputerUseClient");
+        fs::write(&helper_path, "").expect("write helper file");
+        fs::write(
+            service_app.join("Contents").join("Info.plist"),
+            r#"<plist><dict><key>CFBundleIdentifier</key><string>com.openai.sky.CUAService</string></dict></plist>"#,
+        )
+        .expect("write service plist");
+        fs::write(
+            helper_app.join("Contents").join("Info.plist"),
+            r#"<plist><dict><key>CFBundleIdentifier</key><string>com.openai.sky.CUAService.cli</string></dict></plist>"#,
+        )
+        .expect("write helper plist");
+        fs::write(root.join(".codex-plugin").join("plugin.json"), "{}").expect("write manifest");
+        let descriptor_path = root.join(".mcp.json");
+        fs::write(
+            &descriptor_path,
+            r#"{"mcpServers":{"computer-use":{"command":"./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient","args":["mcp"],"cwd":"."}}}"#,
+        )
+        .expect("write descriptor");
+
+        let snapshot = ComputerUseDetectionSnapshot {
+            helper_path: path_to_string(helper_path),
+            helper_descriptor_path: path_to_string(descriptor_path),
+            plugin_manifest_path: path_to_string(root.join(".codex-plugin").join("plugin.json")),
+            ..ComputerUseDetectionSnapshot::default()
+        };
+
+        let discovery = discover_official_parent_handoff(&snapshot);
+
+        assert_eq!(
+            discovery.kind,
+            ComputerUseOfficialParentHandoffKind::HandoffCandidateFound
+        );
+        assert_eq!(discovery.methods.len(), 1);
+        assert_eq!(discovery.methods[0].method, "mcp_descriptor");
+        assert_eq!(discovery.methods[0].confidence, "high");
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
     fn activation_verification_merges_only_for_matching_helper_identity() {
         let mut snapshot = ComputerUseDetectionSnapshot {
             codex_app_detected: true,
@@ -2433,6 +2644,86 @@ mod tests {
         assert!(parse_helper_descriptor(&descriptor_path).is_none());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_helper_descriptor_prefers_cli_cache_launch_contract() {
+        let (temp_root, root) = cli_cache_test_root("computer-use-cache-contract");
+        let descriptor_path = root.join(".mcp.json");
+        let helper_path = root
+            .join("Codex Computer Use.app")
+            .join("Contents")
+            .join("SharedSupport")
+            .join("SkyComputerUseClient.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("SkyComputerUseClient");
+        fs::create_dir_all(helper_path.parent().expect("helper parent"))
+            .expect("create helper parent");
+        fs::create_dir_all(root.join(".codex-plugin")).expect("create manifest parent");
+        fs::write(&helper_path, "").expect("write helper");
+        fs::write(root.join(".codex-plugin").join("plugin.json"), "{}").expect("write manifest");
+        fs::write(
+            &descriptor_path,
+            r#"{"mcpServers":{"computer-use":{"command":"./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient","args":["mcp"],"cwd":"."}}}"#,
+        )
+        .expect("write descriptor");
+
+        let manifest_path = root.join(".codex-plugin").join("plugin.json");
+        assert_eq!(
+            plugin_root_from_manifest_path(&manifest_path),
+            Some(root.clone())
+        );
+
+        let mut snapshot = ComputerUseDetectionSnapshot::default();
+        apply_helper_descriptor_path(&mut snapshot, &descriptor_path);
+
+        assert_eq!(
+            snapshot.helper_descriptor_path,
+            path_to_string(descriptor_path)
+        );
+        assert_eq!(snapshot.helper_path, path_to_string(helper_path));
+        assert!(snapshot.helper_present);
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[tokio::test]
+    async fn activation_probe_static_verifies_cli_cache_contract_without_exec() {
+        let (temp_root, root) = cli_cache_test_root("computer-use-static-probe");
+        let descriptor_path = root.join(".mcp.json");
+        let helper_path = root
+            .join("Codex Computer Use.app")
+            .join("Contents")
+            .join("SharedSupport")
+            .join("SkyComputerUseClient.app")
+            .join("Contents")
+            .join("MacOS")
+            .join("SkyComputerUseClient");
+        fs::create_dir_all(helper_path.parent().expect("helper parent"))
+            .expect("create helper parent");
+        fs::write(&helper_path, "").expect("write helper");
+        fs::write(
+            &descriptor_path,
+            r#"{"mcpServers":{"computer-use":{"command":"./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient","args":["mcp"],"cwd":"."}}}"#,
+        )
+        .expect("write descriptor");
+
+        let helper_path_string = path_to_string(helper_path.clone()).expect("helper path");
+        let descriptor_path_string =
+            path_to_string(descriptor_path.clone()).expect("descriptor path");
+        let execution =
+            run_helper_bridge_probe(&helper_path_string, Some(descriptor_path_string.as_str()))
+                .await;
+
+        assert!(execution.succeeded);
+        assert_eq!(execution.failure_kind, None);
+        assert_eq!(execution.exit_code, None);
+        assert!(execution
+            .diagnostic_message
+            .contains("Codex CLI Computer Use plugin cache launch contract verified"));
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]
