@@ -1408,3 +1408,45 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 162: 补充 macOS Apple Events 权限声明
+
+**Date**: 2026-04-23
+**Task**: 补充 macOS Apple Events 权限声明
+**Branch**: `feature/v-0.4.8`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标：排查用户已授权但 ccgui 客户端内 Computer Use 仍报 Apple event sender not authenticated 的问题，并补齐 macOS app metadata 中缺失的 Apple Events 权限声明。
+
+诊断结论：官方 Codex Computer Use helper 是 OpenAI TeamIdentifier=2DC432GLL2 的正式签名；当前 /Applications/ccgui.app 为 ad-hoc 签名，codesign identity 显示为 cc_gui-f691d086c63a0067，daemon 为 cc_gui_daemon-f35346b278ac8536，TCC 权限对这种哈希身份较脆弱。Terminal 直接运行 codex exec 已可调用 computer-use.list_apps，客户端内失败说明 sender 授权主体不同。
+
+主要改动：src-tauri/Info.plist 增加 NSAppleEventsUsageDescription；src-tauri/Entitlements.plist 增加 com.apple.security.automation.apple-events entitlement，用于声明 ccgui 通过 Codex Computer Use 控制用户允许的应用。
+
+验证结果：plutil -lint src-tauri/Info.plist src-tauri/Entitlements.plist 通过；git diff --check 通过。
+
+后续事项：需要重打包/安装新 app 后重新授予辅助功能、屏幕录制与自动化权限；若仍失败，下一步应处理本地 app 的稳定签名/Developer ID 签名或避免替换后 ad-hoc identity 漂移。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `74ef35c7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
