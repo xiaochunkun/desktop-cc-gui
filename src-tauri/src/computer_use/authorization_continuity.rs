@@ -310,6 +310,14 @@ fn unsupported_authorization_context_message(
                 .to_string(),
         ),
         ComputerUseAuthorizationBackendMode::Local => match current_host.launch_mode {
+            ComputerUseAuthorizationLaunchMode::PackagedApp
+                if packaged_app_sender_lacks_stable_signing_identity(current_host) =>
+            {
+                Some(
+                    "Computer Use authorization continuity is blocked because the current packaged app sender is not signed with a stable Developer ID identity. Rebuild and relaunch a signed packaged app before retrying."
+                        .to_string(),
+                )
+            }
             ComputerUseAuthorizationLaunchMode::Debug => Some(
                 "Computer Use authorization continuity is blocked while running from a debug binary. Re-authorize the packaged app host or switch back to the packaged app before retrying."
                     .to_string(),
@@ -322,6 +330,28 @@ fn unsupported_authorization_context_message(
             | ComputerUseAuthorizationLaunchMode::Unknown => None,
         },
     }
+}
+
+fn packaged_app_sender_lacks_stable_signing_identity(
+    current_host: &ComputerUseAuthorizationHostSnapshot,
+) -> bool {
+    if current_host.launch_mode != ComputerUseAuthorizationLaunchMode::PackagedApp {
+        return false;
+    }
+
+    if current_host.team_identifier.is_none() {
+        return true;
+    }
+
+    let normalized_summary = current_host
+        .signing_summary
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    normalized_summary.contains("adhoc")
+        || normalized_summary.contains("linker-signed")
+        || normalized_summary.contains("teamidentifier=not set")
 }
 
 fn authorization_host_drift_fields(
@@ -498,6 +528,28 @@ mod tests {
             unsupported_authorization_context_message(&current_host),
             Some(
                 "Computer Use authorization continuity is blocked in remote backend mode until the broker is explicitly routed through a verifiable remote host."
+                .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn authorization_continuity_reports_unsupported_context_for_unsigned_packaged_app() {
+        let mut current_host = host_snapshot(
+            "/Applications/ccgui.app/Contents/MacOS/cc-gui",
+            ComputerUseAuthorizationBackendMode::Local,
+            ComputerUseAuthorizationHostRole::ForegroundApp,
+            ComputerUseAuthorizationLaunchMode::PackagedApp,
+        );
+        current_host.team_identifier = None;
+        current_host.signing_summary = Some(
+            "flags=0x20002(adhoc,linker-signed) TeamIdentifier=not set".to_string(),
+        );
+
+        assert_eq!(
+            unsupported_authorization_context_message(&current_host),
+            Some(
+                "Computer Use authorization continuity is blocked because the current packaged app sender is not signed with a stable Developer ID identity. Rebuild and relaunch a signed packaged app before retrying."
                     .to_string()
             )
         );

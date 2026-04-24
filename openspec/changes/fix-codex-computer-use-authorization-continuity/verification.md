@@ -11,6 +11,7 @@
 | 2026-04-24 | `same host + still denied stays generic permission` | Automated | Passed | `computer_use::broker::tests::codex_exec_output_classifies_failed_tool_as_permission_required` |
 | 2026-04-24 | `main app vs daemon / debug host classification` | Automated | Passed | `computer_use::authorization_continuity::tests::authorization_host_role_classifies_debug_and_daemon_paths` |
 | 2026-04-24 | `debug binary drift` | Automated | Passed | `computer_use::authorization_continuity::tests::authorization_continuity_detects_drifted_last_successful_host` |
+| 2026-04-25 | `unsigned packaged app should not be treated as a stable sender` | Automated | Passed | `computer_use::authorization_continuity::tests::authorization_continuity_reports_unsupported_context_for_unsigned_packaged_app` |
 | 2026-04-24 | `relaunch after re-authorization baseline persists` | Automated | Passed | `computer_use::authorization_continuity::tests::persist_last_successful_authorization_host_round_trips_snapshot` |
 
 ## Observed Error Text
@@ -30,6 +31,7 @@
 
 - The same Mac can succeed through `Terminal -> codex exec` while failing through the client host.
 - The highest-signal explanation is authorization continuity drift: the host that was granted Apple Events trust is not the host that actually sends Apple Events during the failing client flow.
+- An additional validated branch now blocks unsigned packaged apps earlier, instead of letting them fall through to a misleading generic permission verdict.
 - The implemented fix therefore distinguishes:
   - `authorization_continuity_blocked`
   - generic same-host `permission_required`

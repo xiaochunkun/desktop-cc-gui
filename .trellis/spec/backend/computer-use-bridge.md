@@ -290,6 +290,7 @@ struct ComputerUseAuthorizationContinuityStatus {
   - `signing_summary`
   - `executable_path`
 - `Remote` backend、local daemon host、debug host 等无法稳定复用授权身份的上下文 MUST 归类为 `UnsupportedContext`，并提供 remediation diagnostic，而不是误导成“继续开权限”。
+- local packaged app 若缺少稳定签名身份（例如 `TeamIdentifier` 缺失、`adhoc` / `linker-signed`）也 MUST 归类为 `UnsupportedContext`；这种场景下 broker 不得继续把 `-10000` 渲染成 generic permission。
 - `Apple event error -10000` / `Sender process is not authenticated` MUST 结合 continuity 分类：
   - drift / unsupported context => `AuthorizationContinuityBlocked`
   - matching host => `PermissionRequired`

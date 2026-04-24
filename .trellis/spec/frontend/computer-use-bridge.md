@@ -246,6 +246,7 @@ export type ComputerUseBrokerResult = {
 - broker UI MUST 明确说明这是 Codex CLI / official Codex runtime handoff，不是 mossx direct helper execution。
 - broker UI MUST 将 `permission_required` 显示为 macOS 权限或 allowed-app approval 阻塞，而不是普通 Codex 错误。
 - broker UI MUST 将 `authorization_continuity_blocked` 显示为 distinct verdict，并明确提示用户去当前显示的 exact host 重新授权，而不是泛化成 “再去系统设置里开权限”。
+- 对于 local packaged app 但 signing identity 不稳定（如 `adhoc` / `linker-signed`）的场景，UI MUST 明确提示“当前包不适合作为最终授权 sender”，而不是继续暗示用户只差勾选 macOS 权限。
 - status card MUST 展示 `authorizationContinuity.currentHost` / `lastSuccessfulHost` 的 backend mode、host role、launch mode、identifier、team identifier、signing summary。
 - 当 `authorizationContinuity.kind = "matching_host"` 时，UI MUST 保留 generic permission / approval 分支，不得把所有 `-10000` 都渲染成 drift。
 - broker UI MUST 展示 workspace selector、task instruction textarea、running state、outcome、duration、failure kind、diagnostic message 与 bounded text result。
@@ -281,6 +282,7 @@ export type ComputerUseBrokerResult = {
 | broker gate helper_bridge_unverified | 禁用 CTA，展示 bridge blocked |
 | `authorizationContinuity.kind = "host_drift_detected"` | 展示 drift badge、current/last host snapshot、exact-host remediation，并禁用 broker CTA |
 | `authorizationContinuity.kind = "unsupported_context"` | 展示 unsupported continuity verdict，并禁用 broker CTA |
+| local packaged app + `adhoc` / `linker-signed` signing summary | 视为 unsupported continuity，提示需要稳定签名身份的 packaged app |
 | broker result `authorization_continuity_blocked` | 展示 sender identity drift / unsupported context 文案，不得误导为 generic permission |
 | no connected workspace | 禁用 CTA，提示选择/连接 workspace |
 | empty broker instruction | 不调用 service，保持输入错误/空任务状态 |

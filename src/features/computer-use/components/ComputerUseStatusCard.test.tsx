@@ -731,6 +731,82 @@ describe("ComputerUseStatusCard", () => {
     ).toBe(true);
   });
 
+  it("renders unsupported continuity for an unsigned packaged app host", async () => {
+    listWorkspacesMock.mockResolvedValue([
+      {
+        id: "ws-1",
+        name: "Demo Workspace",
+        path: "/tmp/demo",
+        connected: true,
+        settings: {
+          sidebarCollapsed: false,
+        },
+      },
+    ]);
+    useComputerUseBridgeStatusMock.mockReturnValue({
+      status: blockedMacStatus({
+        blockedReasons: ["permission_required", "approval_required"],
+        guidanceCodes: ["grant_system_permissions", "review_allowed_apps"],
+        diagnosticMessage: "unsigned packaged app sender detected",
+        authorizationContinuity: authorizationContinuityStatus({
+          kind: "unsupported_context",
+          diagnosticMessage:
+            "Computer Use authorization continuity is blocked because the current packaged app sender is not signed with a stable Developer ID identity. Rebuild and relaunch a signed packaged app before retrying.",
+          currentHost: {
+            displayName: "cc-gui",
+            executablePath: "/Applications/ccgui.app/Contents/MacOS/cc-gui",
+            identifier: "cc_gui-f691d086c63a0067",
+            teamIdentifier: null,
+            backendMode: "local",
+            hostRole: "foreground_app",
+            launchMode: "packaged_app",
+            signingSummary: "flags=0x20002(adhoc,linker-signed)",
+          },
+          lastSuccessfulHost: null,
+          driftFields: [],
+        }),
+      }),
+      isLoading: false,
+      error: null,
+      refresh: vi.fn(),
+    });
+    useComputerUseActivationMock.mockReturnValue({
+      result: null,
+      isRunning: false,
+      error: null,
+      activate: vi.fn(),
+      reset: vi.fn(),
+    });
+
+    render(<ComputerUseStatusCard />);
+
+    await waitFor(() => {
+      expect(listWorkspacesMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      screen.getByText(
+        "settings.computerUse.authorizationContinuity.kind.unsupported_context",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("cc-gui")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Computer Use authorization continuity is blocked because the current packaged app sender is not signed with a stable Developer ID identity. Rebuild and relaunch a signed packaged app before retrying.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("settings.computerUse.broker.continuityBlockedNotice"),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "settings.computerUse.broker.run",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
   it("keeps same-host permission failures on the generic permission branch", () => {
     useComputerUseBridgeStatusMock.mockReturnValue({
       status: blockedMacStatus({
