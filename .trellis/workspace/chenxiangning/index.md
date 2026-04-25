@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-6.md`
-- **Total Sessions**: 179
+- **Total Sessions**: 180
 - **Last Active**: 2026-04-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-6.md` | ~511 | Active |
+| `journal-6.md` | ~578 | Active |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
@@ -34,6 +34,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 180 | 2026-04-25 | 评审最近12条提交并修复跨平台边界问题 | `db492ad3` | `feature/v0.4.9` |
 | 179 | 2026-04-25 | 修复 Codex 生成图片展示与占位链路 | `44907b6c` | `feature/v0.4.9` |
 | 178 | 2026-04-25 | 收口 Claude 会话连续性与审批线程作用域 | `50a3fd774fa485590a823ad119cf8e880c3fc8e4` | `feature/v0.4.9` |
 | 177 | 2026-04-25 | 收紧 Computer Use 未签名宿主连续性判定 | `2958f3f75896de366210d94e8bc2ce637a248f0e` | `feature/v0.4.9` |

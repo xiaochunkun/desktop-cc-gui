@@ -509,3 +509,70 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 180: 评审最近12条提交并修复跨平台边界问题
+
+**Date**: 2026-04-25
+**Task**: 评审最近12条提交并修复跨平台边界问题
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+- review 最近 12 条 git log 的代码变更
+- 重点检查边界条件、Windows/macOS 兼容性、大文件治理与 heavy-test-noise 门禁
+- 对发现的问题直接修复并完成验证
+
+## 主要改动
+- 修复 `computer_use` authorization continuity 对等价 `executable_path` 的误判，兼容 Windows 路径大小写、分隔符差异，以及 canonicalize 后的等价路径
+- 修复 generated image 本地 `file://` URL 在 percent-encoding、query/hash 场景下的路径解析边界，并补充 macOS / Windows 回归测试
+- 将 `GitDiffPanel` 的文件区段渲染逻辑拆分到独立模块，降低主文件体积并消除 large-file near-threshold 风险
+- 补齐 `useThreadItemEvents` 中 generated image 占位逻辑的 hook 依赖，避免 stale closure 风险并清理 lint 告警
+
+## 涉及模块
+- `src-tauri/src/computer_use/authorization_continuity.rs`
+- `src/utils/generatedImageArtifacts.ts`
+- `src/utils/generatedImageArtifacts.test.ts`
+- `src/features/git/components/GitDiffPanel.tsx`
+- `src/features/git/components/GitDiffPanelFileSections.tsx`
+- `src/features/threads/hooks/useThreadItemEvents.ts`
+- `.github/workflows/large-file-governance.yml`
+- `.github/workflows/heavy-test-noise-sentry.yml`
+
+## 验证结果
+- `cargo test --manifest-path src-tauri/Cargo.toml authorization_host_` 通过
+- `npm exec vitest run src/utils/generatedImageArtifacts.test.ts src/features/git/components/GitDiffPanel.test.tsx src/features/app/hooks/useGitCommitController.test.tsx src/features/git-history/components/GitHistoryWorktreePanel.test.tsx` 通过
+- `npm exec vitest run src/features/threads/hooks/useThreadItemEvents.test.ts src/features/threads/hooks/useThreadsReducer.generatedImage.test.ts` 通过
+- `npm run lint` 通过
+- `npm run typecheck` 通过
+- `npm run check:large-files:near-threshold` 通过，`GitDiffPanel.tsx` 已从 near-threshold 列表移除
+- `npm run check:large-files:gate` 通过
+- `node --test scripts/check-heavy-test-noise.test.mjs` 通过
+- `npm run check:heavy-test-noise` 通过，repo-owned act/stdout/stderr 噪音为 0，仅有 1 条 environment-owned warning
+
+## 后续事项
+- 继续关注 `useThreads.ts`、`useThreadsReducer.ts` 等 near-threshold 文件，优先按职责边界拆分，避免触发 hard gate
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `db492ad3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
