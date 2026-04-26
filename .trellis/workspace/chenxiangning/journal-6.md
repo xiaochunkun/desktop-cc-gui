@@ -705,3 +705,65 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 183: 修复 Codex 会话侧栏连续性
+
+**Date**: 2026-04-26
+**Task**: 修复 Codex 会话侧栏连续性
+**Branch**: `feature/v0.4.9`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+任务目标
+- 修复 Codex 左侧会话历史在 partial refresh 下跳动、消失，以及标题回退成 Agent x / Codex Session 的连续性问题。
+
+主要改动
+- 在 useThreadActions 的 thread summary merge 层补 degraded Codex continuity merge，非空 partial refresh 也会保留 last-good visible finalized sessions。
+- 在 useThreadsReducer 的 setThreads 路径补 finalized Codex bounded retention，并扩展 title downgrade guard，阻止 confirmed title 回退成 generic fallback。
+- 补齐 Sidebar、workspace home recentThreads、sessionRadarFeed 三个 surface 的 parity 回归测试，并同步完成 OpenSpec change fix-codex-session-sidebar-state-parity 的 proposal/design/spec/tasks 落地。
+
+涉及模块
+- src/features/threads/hooks/useThreadActions.ts
+- src/features/threads/hooks/useThreadActions.helpers.ts
+- src/features/threads/hooks/useThreadsReducer.ts
+- src/features/app/components/Sidebar.test.tsx
+- src/app-shell-parts/useAppShellSearchRadarSection.test.tsx
+- src/features/session-activity/hooks/useSessionRadarFeed.parity.test.tsx
+- openspec/changes/fix-codex-session-sidebar-state-parity/
+
+验证结果
+- 通过：pnpm vitest run src/features/threads/hooks/useThreadsReducer.threadlist-pending.test.ts
+- 通过：pnpm vitest run src/features/threads/hooks/useThreadActions.test.tsx
+- 通过：pnpm vitest run src/features/threads/hooks/useThreadActions.native-session-bridges.test.tsx
+- 通过：pnpm vitest run src/features/threads/hooks/useThreadsReducer.test.ts src/features/threads/hooks/useThreads.engine-source.test.tsx
+- 通过：pnpm vitest run src/features/session-activity/hooks/useSessionRadarFeed.test.ts src/features/session-activity/hooks/useSessionRadarFeed.incremental.test.tsx src/app-shell-parts/useAppShellSearchRadarSection.test.tsx src/features/session-activity/hooks/useSessionRadarFeed.parity.test.tsx
+- 通过：pnpm vitest run src/features/app/components/Sidebar.test.tsx src/app-shell-parts/useAppShellSearchRadarSection.test.tsx src/features/session-activity/hooks/useSessionRadarFeed.parity.test.tsx
+- 通过：npm run typecheck
+- 通过：openspec validate fix-codex-session-sidebar-state-parity --strict
+
+后续事项
+- 当前工作区已完成侧栏连续性修复，但“thread not found 后手工恢复失败”仍需单独处理，下一步应沿 stale thread binding recovery 路径继续收口。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `97efa538bf5652f070241b7063587b0d64cffc69` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

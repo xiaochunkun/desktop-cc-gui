@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-6.md`
-- **Total Sessions**: 182
+- **Total Sessions**: 183
 - **Last Active**: 2026-04-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-6.md` | ~707 | Active |
+| `journal-6.md` | ~769 | Active |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1972 | Archived |
@@ -34,6 +34,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 183 | 2026-04-26 | 修复 Codex 会话侧栏连续性 | `97efa538bf5652f070241b7063587b0d64cffc69` | `feature/v0.4.9` |
 | 182 | 2026-04-26 | 图片生成幕布链路收口与边界修复 | `86f2a752` | `feature/v0.4.9` |
 | 181 | 2026-04-26 | 收口 Codex 幕布归一化与输入响应 | `9de08c06` | `feature/v0.4.9` |
 | 180 | 2026-04-25 | 评审最近12条提交并修复跨平台边界问题 | `db492ad3` | `feature/v0.4.9` |
