@@ -1272,6 +1272,13 @@ impl RuntimeManager {
             diagnostics.root_command = Some("claude".to_string());
         }
         let mut entries = self.entries.lock().await;
+        let source_active = entries
+            .get(&runtime_key("claude", &entry.id))
+            .map(|runtime| runtime.turn_leases.contains(source))
+            .unwrap_or(false);
+        if !source_active {
+            return;
+        }
         let runtime = Self::upsert_entry(&mut entries, entry, "claude");
         runtime.update_workspace(entry, "claude");
         runtime.pid = pids.first().copied();
@@ -1301,6 +1308,75 @@ impl RuntimeManager {
         runtime.has_stopping_predecessor = false;
         drop(entries);
         let _ = self.persist_ledger().await;
+    }
+
+    pub(crate) async fn sync_claude_runtime_if_source_active(
+        &self,
+        entry: &WorkspaceEntry,
+        pids: &[u32],
+        source: &str,
+    ) {
+        let source_active = {
+            let entries = self.entries.lock().await;
+            entries
+                .get(&runtime_key("claude", &entry.id))
+                .map(|runtime| runtime.turn_leases.contains(source))
+                .unwrap_or(false)
+        };
+        if !source_active {
+            return;
+        }
+        if pids.is_empty() {
+            log::warn!(
+                "[runtime] skipped claude runtime sync with empty pids while source is active workspace_id={} source={}",
+                entry.id,
+                source
+            );
+            return;
+        }
+        self.sync_claude_runtime(entry, pids, source).await;
+    }
+
+    pub(crate) async fn touch_claude_turn_activity(&self, entry: &WorkspaceEntry, source: &str) {
+        let mut entries = self.entries.lock().await;
+        let runtime = Self::upsert_entry(&mut entries, entry, "claude");
+        runtime.update_workspace(entry, "claude");
+        runtime
+            .wrapper_kind
+            .get_or_insert_with(|| "claude-cli".to_string());
+        runtime.session_exists = true;
+        runtime.starting = false;
+        runtime.stopping = false;
+        runtime.error = None;
+        runtime.evict_candidate = false;
+        runtime.eviction_reason = None;
+        runtime.turn_leases.insert(source.to_string());
+        runtime.refresh_active_work_protection();
+        runtime.clear_foreground_work_continuity();
+        runtime.startup_state = Some(RuntimeStartupState::Ready);
+        runtime.last_recovery_source = Some(source.to_string());
+        runtime.last_guard_state = Some("stream-active".to_string());
+    }
+
+    pub(crate) async fn touch_claude_stream_activity(&self, entry: &WorkspaceEntry, source: &str) {
+        let mut entries = self.entries.lock().await;
+        let runtime = Self::upsert_entry(&mut entries, entry, "claude");
+        runtime.update_workspace(entry, "claude");
+        runtime
+            .wrapper_kind
+            .get_or_insert_with(|| "claude-cli".to_string());
+        runtime.session_exists = true;
+        runtime.starting = false;
+        runtime.stopping = false;
+        runtime.error = None;
+        runtime.evict_candidate = false;
+        runtime.eviction_reason = None;
+        runtime.stream_leases.insert(source.to_string());
+        runtime.refresh_active_work_protection();
+        runtime.clear_foreground_work_continuity();
+        runtime.startup_state = Some(RuntimeStartupState::Ready);
+        runtime.last_recovery_source = Some(source.to_string());
+        runtime.last_guard_state = Some("stream-active".to_string());
     }
 
     pub(crate) async fn touch(&self, engine: &str, workspace_id: &str, _source: &str) {
@@ -1387,6 +1463,38 @@ impl RuntimeManager {
         }
         drop(entries);
         let _ = self.persist_ledger().await;
+    }
+
+    pub(crate) async fn release_claude_terminal_activity(
+        &self,
+        workspace_id: &str,
+        turn_source: &str,
+        stream_source: &str,
+    ) {
+        let key = runtime_key("claude", workspace_id);
+        let mut entries = self.entries.lock().await;
+        let mut should_persist = false;
+        let should_remove = if let Some(runtime) = entries.get_mut(&key) {
+            runtime.turn_leases.remove(turn_source);
+            runtime.stream_leases.remove(stream_source);
+            runtime.last_used_at_ms = now_millis();
+            should_persist = true;
+            if runtime.has_active_leases() {
+                runtime.refresh_active_work_protection();
+                false
+            } else {
+                true
+            }
+        } else {
+            false
+        };
+        if should_remove {
+            entries.remove(&key);
+        }
+        drop(entries);
+        if should_persist {
+            let _ = self.persist_ledger().await;
+        }
     }
 
     pub(crate) async fn record_failure(
