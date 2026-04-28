@@ -364,3 +364,72 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 210: 交付客户端界面显示控制
+
+**Date**: 2026-04-28
+**Task**: 交付客户端界面显示控制
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+- 完成 OpenSpec change `add-client-ui-visibility-controls` 的实现、测试、验证与归档。
+- 将客户端可选 UI 入口统一纳入可见性控制，允许用户隐藏顶部、右侧、底部和幕布区域的非核心入口。
+
+## 主要改动
+- 新增 `client-ui-visibility` registry 与 hook，提供 panel/control 两层可见性模型、client storage 持久化、跨 hook 实例同步和默认值恢复。
+- 在设置页新增“界面显示”分组，使用客户端页面对应 icon 标识每一项，并支持恢复默认显示。
+- 接入布局层可见性控制：顶部会话 Tab、顶部运行控制、顶部工具控制、右侧活动工具栏、底部活动面板、幕布区域消息锚点和用户气泡吸顶。
+- 移除右侧活动工具栏里的 `Runtime console` 重复入口，仅保留顶部 runtime console 快捷入口。
+- 将“消息锚点指示”调整为“幕布区域”，并新增“用户气泡吸顶”隐藏控制。
+- 归档 OpenSpec change，并同步生成主规范 `client-ui-visibility-controls`。
+
+## 涉及模块
+- `src/features/client-ui-visibility/**`
+- `src/features/settings/components/**`
+- `src/features/layout/**`
+- `src/features/messages/components/Messages.tsx`
+- `src/features/status-panel/components/StatusPanel.tsx`
+- `src/app-shell-parts/useAppShellLayoutNodesSection.tsx`
+- `src/i18n/locales/en.part1.ts`
+- `src/i18n/locales/zh.part1.ts`
+- `openspec/specs/client-ui-visibility-controls/spec.md`
+- `openspec/changes/archive/2026-04-28-add-client-ui-visibility-controls/**`
+
+## 验证结果
+- `npm run typecheck` 通过。
+- `npm run lint` 通过。
+- `npm run check:large-files` 通过。
+- 相关 Vitest：5 个文件 / 78 tests 通过。
+- `npm run test -- --run` 全量通过。
+- `openspec validate client-ui-visibility-controls --strict` 通过。
+- 用户已完成手动验收并确认效果可接受。
+
+## 后续事项
+- 当前 review 仅发现一个非阻塞测试缺口：可补充设置页中 open workspace app 图片 icon 的断言，防止未来 icon resolver 回退不被测试捕获。
+- 工作区仍存在其他未提交改动，主要属于 runtime / liveness / model selector 等独立工作，未纳入本次业务提交。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6fe84157f1578bf8c3351a50d6ac428d88ff29d8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

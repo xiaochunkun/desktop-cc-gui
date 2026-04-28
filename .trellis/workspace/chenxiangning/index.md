@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-7.md`
-- **Total Sessions**: 209
+- **Total Sessions**: 210
 - **Last Active**: 2026-04-28
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-7.md` | ~366 | Active |
+| `journal-7.md` | ~435 | Active |
 | `journal-6.md` | ~1961 | Archived |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
@@ -35,6 +35,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 210 | 2026-04-28 | 交付客户端界面显示控制 | `6fe84157f1578bf8c3351a50d6ac428d88ff29d8` | `feature/v0.4.11` |
 | 209 | 2026-04-28 | 扩展可配置应用快捷键 | `dcb43e5602c73a95272cfdba8c896b7eb3b59ab3` | `feature/v0.4.11` |
 | 208 | 2026-04-28 | 模型选择器配置刷新入口 | `8f802abb` | `feature/v0.4.11` |
 | 207 | 2026-04-28 | Nix 前端依赖改用 importNpmLock | `aa9d4d6b358d277c742ddd298f6ccdde5bf41ad9` | `feature/v0.4.11` |
