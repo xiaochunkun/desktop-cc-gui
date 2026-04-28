@@ -563,6 +563,8 @@ type LayoutNodesOptions = {
   onOpenAgentSettings: () => void;
   onOpenPromptSettings: () => void;
   onOpenModelSettings: (providerId?: string) => void;
+  onRefreshModelConfig?: (providerId?: string) => Promise<void> | void;
+  isModelConfigRefreshing?: boolean;
   opencodeVariantOptions: string[];
   selectedOpenCodeVariant: string | null;
   onSelectOpenCodeVariant: (variant: string | null) => void;
@@ -1403,6 +1405,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
         onOpenAgentSettings={options.onOpenAgentSettings}
         onOpenPromptSettings={options.onOpenPromptSettings}
         onOpenModelSettings={options.onOpenModelSettings}
+        onRefreshModelConfig={options.onRefreshModelConfig}
+        isModelConfigRefreshing={options.isModelConfigRefreshing}
         opencodeVariantOptions={options.opencodeVariantOptions}
         selectedOpenCodeVariant={options.selectedOpenCodeVariant}
         onSelectOpenCodeVariant={options.onSelectOpenCodeVariant}
