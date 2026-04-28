@@ -433,3 +433,70 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 211: 归档 Codex 会话保活提案
+
+**Date**: 2026-04-28
+**Task**: 归档 Codex 会话保活提案
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+
+归档 OpenSpec change `harden-codex-conversation-liveness`，并提交 Codex 会话保活 / 恢复链路实现。
+
+## 主要改动
+
+- 归档 `openspec/changes/archive/2026-04-28-harden-codex-conversation-liveness/`，并同步主 specs。
+- 增加 Codex conversation liveness helper，区分 `empty-draft`、`unknown`、`accepted` 与 durable activity。
+- 修复 idle-before-first-send：首发 prompt 在 `turn/start` accepted 前遇到 `thread not found/session not found` 时可 fresh create + replay；`invalid thread id` 仍走 durable-safe recovery。
+- 增加 180s base no-progress / execution-active extended quiet-work 窗口，避免长工具调用被误判 stalled。
+- 强化 runtime generation / shutdown source 诊断，避免 predecessor runtime-ended 污染 successor state。
+- recovery card copy 和 outcome 区分 `rebound`、`fresh`、`failed`、`abandoned`。
+
+## 涉及模块
+
+- Frontend: `src/features/threads/**`, `src/features/messages/**`, `src/features/app/hooks/**`, `src/features/settings/**`, i18n 文案。
+- Backend: `src-tauri/src/backend/app_server*`, `src-tauri/src/runtime/**`。
+- Specs: `openspec/specs/codex-conversation-liveness`, Codex long-task / stale-thread / stalled-recovery / lifecycle / runtime-stability specs。
+
+## 验证结果
+
+- `openspec validate harden-codex-conversation-liveness --strict` 通过。
+- `openspec validate --specs --strict` 通过，193 specs passed。
+- `git diff --cached --check` 通过。
+- `npm run typecheck` 通过。
+- `npm run lint` 通过。
+- `npm exec vitest run src/features/threads/hooks/useThreadMessaging.test.tsx src/features/threads/hooks/useThreadEventHandlers.test.ts src/features/messages/components/Messages.runtime-reconnect.test.tsx src/features/app/hooks/useAppServerEvents.runtime-ended.test.tsx src/features/app/hooks/useAppServerEvents.turn-stalled.test.tsx src/features/settings/components/settings-view/sections/RuntimePoolSection.test.tsx src/features/threads/utils/codexConversationLiveness.test.ts` 通过，143 tests passed。
+- `cargo test --manifest-path src-tauri/Cargo.toml runtime` 通过。
+- 人工 smoke：idle-before-first-send、旧 recovery card 语义、fresh continuation、stop/retry surface、长任务 180s 误杀策略已面测；runtime-kill-during-turn 保留为高方差后续跟进项。
+
+## 后续事项
+
+- 若用户后续复现 runtime-kill-during-turn 的稳定路径，再补专门 fault-injection 用例。
+- 当前工作区仍保留无关未提交变更：`openspec/changes/add-model-selector-config-actions/tasks.md`。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `05cf919a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
