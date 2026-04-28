@@ -290,3 +290,77 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 209: 扩展可配置应用快捷键
+
+**Date**: 2026-04-28
+**Task**: 扩展可配置应用快捷键
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+实现可配置应用快捷键并完成边界条件、跨平台和告警门禁 review 修复。
+
+### Main Changes
+
+任务目标：
+- 基于 OpenSpec `expand-configurable-app-shortcuts` 扩展应用级快捷键配置能力。
+- 对当前工作区进行边界条件、Windows/macOS 兼容、大文件治理和 heavy-test-noise 告警门禁 review。
+- 发现问题后直接修复，并使用中文 Conventional Commits 完成本地提交。
+
+主要改动：
+- 新增 OpenSpec 提案、设计、任务清单和 app-shortcuts delta spec，沉淀快捷键行为契约与平台差异。
+- 将 Settings 快捷键区域改为 metadata-driven 分组渲染，覆盖窗口、会话、侧栏、应用 surface、文件、Git diff、UI 缩放、composer 等动作。
+- 接入 `useAppSurfaceShortcuts`、顶部 session tab 前后切换、文件保存/查找、Git diff list view、Global Search、新建 agent 等快捷键执行链路。
+- 统一 `isEditableShortcutTarget`，避免全局快捷键抢占 input、textarea、select、contenteditable、textbox 与 CodeMirror 类编辑场景。
+- 修复 Global Search 清空快捷键仍被默认 fallback 激活的问题，明确 `null` 为 disabled。
+- 强化跨平台快捷键解析：补齐 shifted punctuation alias，修正非 macOS `Meta+Ctrl` 展示与匹配，兼容 UI scale 的 `cmd+=` / `+` 键差异。
+
+涉及模块：
+- `openspec/changes/expand-configurable-app-shortcuts/**`
+- `src/features/settings/components/settings-view/**`
+- `src/features/settings/hooks/useAppSettings.ts`
+- `src/features/app/hooks/**Shortcut*.ts`
+- `src/features/layout/hooks/**`
+- `src/features/files/components/FileViewPanel.tsx`
+- `src/features/git/components/GitDiffPanel.tsx`
+- `src/utils/shortcuts.ts`
+- `src/i18n/locales/en.part1.ts`
+- `src/i18n/locales/zh.part1.ts`
+- `src/styles/settings.part2.css`
+
+验证结果：
+- `npm run typecheck` passed。
+- `npm run lint` passed。
+- 聚焦 Vitest：7 个测试文件、54 tests passed。
+- `npm run check:large-files:near-threshold` passed。
+- `npm run check:large-files:gate` passed。
+- `npm run check:large-files` passed，found=0。
+- `node --test scripts/check-heavy-test-noise.test.mjs` passed。
+- `npm run check:heavy-test-noise` passed，374 个测试文件完成，act warnings=0。
+- `npx openspec validate expand-configurable-app-shortcuts --strict` passed。
+- `git diff --cached --check` passed。
+
+后续事项：
+- 保留未跟踪目录 `openspec/changes/harden-codex-conversation-liveness/`，本次未纳入提交。
+- 建议后续在真实 macOS/Windows 应用里做一次 UI smoke：设置页修改/清空快捷键、输入框内快捷键 guard、文件保存/查找、Git diff list view、会话切换与 Global Search。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dcb43e5602c73a95272cfdba8c896b7eb3b59ab3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
