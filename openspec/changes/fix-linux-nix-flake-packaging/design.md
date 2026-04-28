@@ -7,7 +7,7 @@
 - `TAURI_CONFIG.build.frontendDist` 当前是 `dist`，在 Rust crate context 与 repo-root context 切换时容易指向错误位置。
 - Linux build inputs 已包含 `gtk3`、`libxkbcommon`、`librsvg`、`libsoup_3`、`webkitgtk_4_1`，但同类 Tauri/Nix 修复显示仍可能需要显式补齐 `alsa-lib`、`glib-networking`、`libayatana-appindicator`、`bindgenHook` 等依赖。
 - 源码直接 import `antd` 与 `remark-breaks`，但 root `package.json` 尚未声明；`package-lock.json` 中已有对应 transitive entries，不能替代 root manifest 的 direct dependency contract。
-- 上游 PR #428 最初使用了 `npmDepsFetcherVersion = 2`、`npmFlags = [ "--legacy-peer-deps" ]` 与 lockfile v3 normalization；后续提交 `fe252675` 又改为 `importNpmLock`，避免手工维护 `npmDepsHash`。这里应语义吸收已验证的 Nix/npm 可复现构建思路，而不是无条件照抄。
+- 上游 PR #428 最初使用了 `npmDepsFetcherVersion = 2`、`npmFlags = [ "--legacy-peer-deps" ]` 与 lockfile v3 normalization；后续提交 `fe252675` 又改为 `importNpmLock`，试图避免手工维护 `npmDepsHash`。mossx 当前 `package-lock.json` 存在大量缺少 `resolved` 的 package nodes，会触发 nixpkgs `importNpmLock` 的 `attribute 'resolved' missing` evaluation failure，因此这里采用 fixed-output `npmDepsHash`，而不是照抄 `importNpmLock`。
 
 本设计只处理 Linux/Nix packaging reproducibility。Linux AppImage Wayland/EGL/GBM runtime startup fallback 由既有 `linux-appimage-startup-compatibility` capability 管理，不在这里合并。
 
@@ -57,9 +57,9 @@ Alternatives considered:
 | Replace with `npm exec -- vite build` | May bypass some npm script issues | Drops TypeScript check and weakens quality gate | Reject |
 | Split Nix frontend build into manual `tsc` then `vite` commands | Explicit but duplicates package script | More drift risk than reusing existing script | Reject |
 
-### Decision 3: Use `importNpmLock` for npm dependency closure
+### Decision 3: Use fixed-output `npmDepsHash` for npm dependency closure
 
-Use `pkgs.importNpmLock { npmRoot = ./.; }` as the `buildNpmPackage.npmDeps` source and pair it with `pkgs.importNpmLock.npmConfigHook`. This relies on integrity hashes already committed in `package-lock.json` and removes the hand-maintained `npmDepsHash` drift point observed after the `0.4.11` version bump.
+Use `npmDepsHash` with `npmDepsFetcherVersion = 2` as the `buildNpmPackage` dependency source. The current lockfile is valid for npm install but does not satisfy nixpkgs `importNpmLock`'s stricter requirement that dependency entries expose `resolved`; using a fixed-output hash avoids that evaluation-time contract mismatch.
 
 `npmFlags = [ "--legacy-peer-deps" ]` remains acceptable when Nix/npm validation proves it is required by React 19 peer dependency resolution. It is not a product dependency and must not be used to mask undeclared direct imports.
 
@@ -69,8 +69,8 @@ Alternatives considered:
 
 | Option | Description | Trade-off | Decision |
 |---|---|---|---|
-| Keep `npmDepsHash` + `npmDepsFetcherVersion = 2` | Matches the previous fix | Any `package-lock.json` metadata change can invalidate the fixed-output hash and require manual refresh | Reject |
-| Use `importNpmLock` only for npm dependency closure | Removes manual hash drift while preserving committed lockfile as source of truth | Requires current nixpkgs to provide `importNpmLock` and its dedicated config hook | Adopt |
+| Keep `npmDepsHash` + `npmDepsFetcherVersion = 2` | Matches the validated fixed-output fetcher path | Any npm dependency closure change requires manual hash refresh | Adopt |
+| Use `importNpmLock` only for npm dependency closure | Removes manual hash drift while preserving committed lockfile as source of truth | Fails with current lockfile because many dependency nodes lack `resolved` | Reject |
 | Copy every PR #428 flake change | Imports the contributor's exact local result | Includes unrelated `doCheck = false` and chmod behavior that are not needed for hash automation | Reject |
 
 ### Decision 4: Fix `frontendDist` relative to Rust crate execution context
@@ -128,13 +128,13 @@ Because `package.json` and `package-lock.json` are cross-platform files, their c
 3. Regenerate `package-lock.json` using the repository-approved npm flow. If Nix/npm requires lockfile v3, `resolved`, or `integrity` normalization, allow that normalization while rejecting unrelated dependency version upgrades.
 4. Update `flake.nix`:
    - keep frontend build script quality gate;
-   - use `importNpmLock` with `importNpmLock.npmConfigHook` for npm dependencies;
+   - use `npmDepsHash` with `npmDepsFetcherVersion = 2` for npm dependencies;
    - keep `npmFlags = [ "--legacy-peer-deps" ]` only if required by Nix/npm behavior;
    - adjust Rust package source/cargo root;
    - adjust `TAURI_CONFIG.build.frontendDist` based on verified build context;
    - add Linux-only build inputs and only add `LIBCLANG_PATH` if `bindgenHook` is insufficient;
    - add `meta.mainProgram`.
-5. If `package-lock.json` changes later, rely on committed integrity data through `importNpmLock` rather than refreshing a hand-written `npmDepsHash`.
+5. If npm dependency closure changes later, refresh `npmDepsHash` through the standard Nix fixed-output mismatch workflow.
 6. Run validation and record any environment-specific blockers.
 
 ## Risks / Trade-offs
@@ -157,6 +157,6 @@ Because `package.json` and `package-lock.json` are cross-platform files, their c
 ## Open Questions
 
 - Does current nixpkgs support `buildAndTestSubdir` for the selected `rustPlatform.buildRustPackage` path, or should the implementation use only `cargoRoot` plus explicit build flags?
-- Does the current lockfile and React 19 dependency graph still require `npmFlags = [ "--legacy-peer-deps" ]` during Nix builds after switching to `importNpmLock`?
+- Does the current lockfile and React 19 dependency graph still require `npmFlags = [ "--legacy-peer-deps" ]` during Nix builds with `npmDepsHash`?
 - Is `@lobehub/ui` required as a direct peer for `@lobehub/icons` in a clean npm install, or is `antd` sufficient for the icons currently used?
 - On the target Linux/Nix host, which native package is the first actual missing dependency: `alsa-lib`, `glib-networking`, `libayatana-appindicator`, `bindgenHook`, explicit `LIBCLANG_PATH`, or another WebKitGTK/Tauri dependency?

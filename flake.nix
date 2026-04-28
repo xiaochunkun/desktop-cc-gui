@@ -31,10 +31,8 @@
           version = packageJson.version;
           src = ./.;
           nodejs = pkgs.nodejs_20;
-          npmDeps = pkgs.importNpmLock {
-            npmRoot = ./.;
-          };
-          npmConfigHook = pkgs.importNpmLock.npmConfigHook;
+          npmDepsHash = "sha256-pS4skwBNVcEB2tLO/E3xCkD0G015wAmJJ1ds9N9idec=";
+          npmDepsFetcherVersion = 2;
           npmFlags = [ "--legacy-peer-deps" ];
           npmBuildScript = "build";
           installPhase = ''

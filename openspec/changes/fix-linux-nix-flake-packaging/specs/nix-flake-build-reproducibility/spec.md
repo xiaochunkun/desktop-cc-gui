@@ -32,11 +32,11 @@ The Nix frontend build MUST fetch npm dependencies from the committed manifest a
 - **THEN** the build MUST execute `tsc && vite build` or an equivalent command sequence that fails on TypeScript errors
 - **AND** the Nix build MUST NOT replace the repository build with `vite build` only
 
-#### Scenario: npm dependency closure uses committed lockfile integrity
+#### Scenario: npm dependency closure uses a fixed-output hash
 
 - **WHEN** the Nix frontend dependency fetch is configured
-- **THEN** the flake SHOULD use `importNpmLock` and `importNpmLock.npmConfigHook` so dependency sources come from committed `package-lock.json` integrity data
-- **AND** the frontend derivation MUST NOT require a hand-maintained `npmDepsHash` for the npm dependency closure
+- **THEN** the flake MUST use `npmDepsHash` with `npmDepsFetcherVersion = 2` while the committed lockfile lacks `resolved` fields required by `importNpmLock`
+- **AND** the hash MUST be refreshed only when the npm dependency closure changes
 
 #### Scenario: npm install flags are justified by Nix validation
 
