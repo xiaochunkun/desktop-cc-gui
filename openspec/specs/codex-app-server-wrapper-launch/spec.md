@@ -1,4 +1,10 @@
-## ADDED Requirements
+# codex-app-server-wrapper-launch Specification
+
+## Purpose
+
+Define Codex app-server launch behavior for Windows command wrappers, internal launch config injection, compatibility retry, probe/doctor diagnostics, and non-wrapper regression protection.
+
+## Requirements
 
 ### Requirement: Codex App Server Launch MUST Preserve Existing Healthy Paths
 
