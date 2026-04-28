@@ -1512,6 +1512,33 @@ fn parse_codex_session_summary_extracts_response_item_user_summary() {
 }
 
 #[test]
+fn parse_codex_session_summary_prefers_event_msg_user_summary_over_response_item_user() {
+    let root = make_temp_sessions_root();
+    let day_key = "2026-01-19";
+    let workspace_path = Path::new("/tmp/project-alpha");
+    let session_path = write_named_session_file(
+        &root,
+        day_key,
+        "rollout-2026-01-19T12-03-00-event-user-priority",
+        &[
+            r#"{"timestamp":"2026-01-19T12:03:00.000Z","type":"session_meta","payload":{"id":"session-event-user-priority","cwd":"/tmp/project-alpha","source":"cli","provider":"openai"}}"#
+                .to_string(),
+            r###"{"timestamp":"2026-01-19T12:03:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"response_item injected wrapper"}]}}"###
+                .to_string(),
+            r#"{"timestamp":"2026-01-19T12:03:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"real user request"}}"#
+                .to_string(),
+        ],
+    );
+
+    let summary = parse_codex_session_summary(session_path.as_path(), Some(workspace_path))
+        .expect("parse summary")
+        .expect("summary exists");
+
+    assert_eq!(summary.session_id, "session-event-user-priority");
+    assert_eq!(summary.summary.as_deref(), Some("real user request"));
+}
+
+#[test]
 fn parse_codex_session_summary_extracts_string_content_user_summary() {
     let root = make_temp_sessions_root();
     let day_key = "2026-01-19";

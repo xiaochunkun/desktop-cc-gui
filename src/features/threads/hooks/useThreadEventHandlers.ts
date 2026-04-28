@@ -16,7 +16,10 @@ import { parseFirstPacketTimeoutSeconds, stripBackendErrorPrefix } from "../util
 import { captureClaudeMcpRuntimeSnapshotFromRaw } from "../utils/claudeMcpRuntimeSnapshot";
 import { buildThreadDebugCorrelation } from "../utils/threadDebugCorrelation";
 import type { ThreadAction } from "./useThreadsReducer";
-import type { NormalizedThreadEvent } from "../contracts/conversationCurtainContracts";
+import type {
+  ConversationEngine,
+  NormalizedThreadEvent,
+} from "../contracts/conversationCurtainContracts";
 import { isDebugLightPathEnabled } from "../utils/realtimePerfFlags";
 import {
   buildThreadStreamCorrelationDimensions,
@@ -32,7 +35,7 @@ import {
 const TURN_FIRST_DELTA_WARNING_MS = 6_000;
 const TURN_STALL_WARNING_MS = 6_000;
 export const CODEX_TURN_NO_PROGRESS_STALL_MS = 180_000;
-export const CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS = 15 * 60_000;
+export const CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS = 20 * 60_000;
 const TURN_DIAGNOSTIC_VERBOSE_FLAG_KEY = "ccgui.debug.turnDiagnosticsVerbose";
 const EXECUTION_ITEM_TYPES = new Set([
   "commandExecution",
@@ -77,6 +80,15 @@ type TurnDiagnosticState = {
   progressSequence: number;
   stallReported: boolean;
   noProgressSettled: boolean;
+};
+
+type CodexQuarantinedTurn = {
+  workspaceId: string;
+  threadId: string;
+  turnId: string;
+  settledAt: number;
+  reason: string;
+  source: string;
 };
 
 function asString(value: unknown) {
@@ -157,6 +169,42 @@ function applyActiveExecutionItemEvent(
 
 function buildAssistantSnapshotIngressKey(threadId: string, itemId: string) {
   return `${threadId}\u0000${itemId || "__anonymous__"}`;
+}
+
+function buildCodexTurnIdentityKey(threadId: string, turnId: string) {
+  return `${threadId}\u0000${turnId}`;
+}
+
+function extractTurnIdFromRawItem(item: Record<string, unknown>) {
+  const turn = item.turn && typeof item.turn === "object"
+    ? (item.turn as Record<string, unknown>)
+    : null;
+  return asString(
+    item.turnId ??
+      item.turn_id ??
+      turn?.id ??
+      turn?.turnId ??
+      turn?.turn_id ??
+      "",
+  ).trim();
+}
+
+function inferRawItemEngine(
+  threadId: string,
+  item: Record<string, unknown>,
+): "claude" | "codex" | "gemini" | "opencode" {
+  const rawEngine = asString(item.engineSource ?? item.engine_source)
+    .trim()
+    .toLowerCase();
+  if (
+    rawEngine === "claude" ||
+    rawEngine === "codex" ||
+    rawEngine === "gemini" ||
+    rawEngine === "opencode"
+  ) {
+    return rawEngine;
+  }
+  return inferThreadEngine(threadId);
 }
 
 function resolveAgentMessageSnapshotText(item: Record<string, unknown>) {
@@ -391,6 +439,7 @@ export function useThreadEventHandlers({
   const codexNoProgressTimerRef = useRef<Map<string, number>>(new Map());
   const settleCodexNoProgressTurnRef = useRef<((threadId: string) => void) | null>(null);
   const assistantSnapshotIngressLengthRef = useRef<Map<string, number>>(new Map());
+  const quarantinedCodexTurnsRef = useRef<Map<string, CodexQuarantinedTurn>>(new Map());
 
   const getThreadLifecycleSnapshot = useCallback((threadId: string) => {
     return (
@@ -632,6 +681,103 @@ export function useThreadEventHandlers({
     });
   }, []);
 
+  const quarantineCodexTurn = useCallback(
+    (
+      workspaceId: string,
+      threadId: string,
+      turnId: string,
+      reason: string,
+      source: string,
+      engineHint?: ConversationEngine | null,
+    ) => {
+      const normalizedTurnId = turnId.trim();
+      const engine = engineHint ?? inferThreadEngine(threadId);
+      if (engine !== "codex" || !normalizedTurnId) {
+        return;
+      }
+      const key = buildCodexTurnIdentityKey(threadId, normalizedTurnId);
+      if (quarantinedCodexTurnsRef.current.has(key)) {
+        return;
+      }
+      quarantinedCodexTurnsRef.current.set(key, {
+        workspaceId,
+        threadId,
+        turnId: normalizedTurnId,
+        settledAt: Date.now(),
+        reason,
+        source,
+      });
+    },
+    [],
+  );
+
+  const shouldSkipCodexTurnEvent = useCallback(
+    (input: {
+      engine: "claude" | "codex" | "gemini" | "opencode";
+      workspaceId: string;
+      threadId: string;
+      turnId: string;
+      operation: string;
+      sourceMethod: string;
+    }) => {
+      if (input.engine !== "codex") {
+        return false;
+      }
+      const eventTurnId = input.turnId.trim();
+      if (!eventTurnId) {
+        return false;
+      }
+      const quarantineKey = buildCodexTurnIdentityKey(input.threadId, eventTurnId);
+      const quarantinedTurn = quarantinedCodexTurnsRef.current.get(quarantineKey);
+      if (quarantinedTurn) {
+        emitTurnDiagnostic("quarantined-codex-event-skipped", {
+          ...buildCodexLivenessDiagnostic({
+            workspaceId: input.workspaceId,
+            threadId: input.threadId,
+            stage: "abandoned",
+            outcome: "abandoned",
+            source: input.sourceMethod,
+            reason: "event belongs to a quarantined Codex turn",
+            turnId: eventTurnId,
+          }),
+          eventTurnId,
+          quarantinedAtMs: quarantinedTurn.settledAt,
+          quarantineReason: quarantinedTurn.reason,
+          quarantineSource: quarantinedTurn.source,
+          operation: input.operation,
+          sourceMethod: input.sourceMethod,
+          diagnosticCategory: "quarantined-codex-event",
+        }, { force: true });
+        return true;
+      }
+      const diagnosticTurnId = turnDiagnosticsRef.current.get(input.threadId)?.turnId ?? null;
+      const activeTurnId = getThreadLifecycleSnapshot(input.threadId).activeTurnId;
+      const expectedTurnId = diagnosticTurnId ?? activeTurnId;
+      if (!expectedTurnId || expectedTurnId === eventTurnId) {
+        return false;
+      }
+      emitTurnDiagnostic("late-codex-event-skipped", {
+        ...buildCodexLivenessDiagnostic({
+          workspaceId: input.workspaceId,
+          threadId: input.threadId,
+          stage: "abandoned",
+          outcome: "abandoned",
+          source: input.sourceMethod,
+          reason: "event turn id does not match active Codex turn",
+          turnId: eventTurnId,
+        }),
+        eventTurnId,
+        activeTurnId,
+        expectedTurnId,
+        operation: input.operation,
+        sourceMethod: input.sourceMethod,
+        diagnosticCategory: "late-codex-event",
+      }, { force: true });
+      return true;
+    },
+    [emitTurnDiagnostic, getThreadLifecycleSnapshot],
+  );
+
   const markProcessingTracked = useCallback(
     (threadId: string, isProcessing: boolean) => {
       const previous =
@@ -807,6 +953,7 @@ export function useThreadEventHandlers({
     const stallTimers = turnStallTimerRef.current;
     const codexNoProgressTimers = codexNoProgressTimerRef.current;
     const assistantSnapshotIngressLength = assistantSnapshotIngressLengthRef.current;
+    const quarantinedCodexTurns = quarantinedCodexTurnsRef.current;
     return () => {
       firstDeltaTimers.forEach((timerId) => {
         window.clearTimeout(timerId);
@@ -821,6 +968,7 @@ export function useThreadEventHandlers({
       });
       codexNoProgressTimers.clear();
       assistantSnapshotIngressLength.clear();
+      quarantinedCodexTurns.clear();
     };
   }, []);
 
@@ -1083,7 +1231,22 @@ export function useThreadEventHandlers({
       threadId: string;
       itemId: string;
       delta: string;
+      turnId?: string | null;
     }) => {
+      const eventTurnId = asString(payload.turnId).trim();
+      if (
+        eventTurnId &&
+        shouldSkipCodexTurnEvent({
+          engine: inferThreadEngine(payload.threadId),
+          workspaceId: payload.workspaceId,
+          threadId: payload.threadId,
+          turnId: eventTurnId,
+          operation: "appendAgentMessageDelta",
+          sourceMethod: "item/agentMessage/delta",
+        })
+      ) {
+        return;
+      }
       onAgentMessageDelta(payload);
       dispatch({ type: "markContinuationEvidence", threadId: payload.threadId });
       if (interruptedThreadsRef.current.has(payload.threadId)) {
@@ -1104,11 +1267,24 @@ export function useThreadEventHandlers({
       noteCodexTurnProgressEvidence,
       onAgentMessageDelta,
       recordAssistantStreamIngress,
+      shouldSkipCodexTurnEvent,
     ],
   );
 
   const onItemStartedTracked = useCallback(
     (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
+      if (
+        shouldSkipCodexTurnEvent({
+          engine: inferRawItemEngine(threadId, item),
+          workspaceId,
+          threadId,
+          turnId: extractTurnIdFromRawItem(item),
+          operation: "itemStarted",
+          sourceMethod: "item/started",
+        })
+      ) {
+        return;
+      }
       onItemStarted(workspaceId, threadId, item);
       dispatch({ type: "markContinuationEvidence", threadId });
       noteCodexTurnProgressEvidence(threadId, "item-started");
@@ -1121,11 +1297,24 @@ export function useThreadEventHandlers({
       maybeRecordAgentMessageSnapshotIngress,
       noteCodexTurnProgressEvidence,
       onItemStarted,
+      shouldSkipCodexTurnEvent,
     ],
   );
 
   const onItemUpdatedTracked = useCallback(
     (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
+      if (
+        shouldSkipCodexTurnEvent({
+          engine: inferRawItemEngine(threadId, item),
+          workspaceId,
+          threadId,
+          turnId: extractTurnIdFromRawItem(item),
+          operation: "itemUpdated",
+          sourceMethod: "item/updated",
+        })
+      ) {
+        return;
+      }
       onItemUpdated(workspaceId, threadId, item);
       dispatch({ type: "markContinuationEvidence", threadId });
       noteCodexTurnProgressEvidence(threadId, "item-updated");
@@ -1138,54 +1327,50 @@ export function useThreadEventHandlers({
       maybeRecordAgentMessageSnapshotIngress,
       noteCodexTurnProgressEvidence,
       onItemUpdated,
+      shouldSkipCodexTurnEvent,
     ],
   );
 
   const onItemCompletedTracked = useCallback(
     (workspaceId: string, threadId: string, item: Record<string, unknown>) => {
+      if (
+        shouldSkipCodexTurnEvent({
+          engine: inferRawItemEngine(threadId, item),
+          workspaceId,
+          threadId,
+          turnId: extractTurnIdFromRawItem(item),
+          operation: "itemCompleted",
+          sourceMethod: "item/completed",
+        })
+      ) {
+        return;
+      }
       onItemCompleted(workspaceId, threadId, item);
       dispatch({ type: "markContinuationEvidence", threadId });
       noteCodexTurnProgressEvidence(threadId, "item-completed");
       captureTurnItemDiagnostic(threadId, "completed", item);
     },
-    [captureTurnItemDiagnostic, dispatch, noteCodexTurnProgressEvidence, onItemCompleted],
+    [
+      captureTurnItemDiagnostic,
+      dispatch,
+      noteCodexTurnProgressEvidence,
+      onItemCompleted,
+      shouldSkipCodexTurnEvent,
+    ],
   );
 
   const shouldSkipLateCodexNormalizedEvent = useCallback(
     (event: NormalizedThreadEvent) => {
-      if (event.engine !== "codex") {
-        return false;
-      }
-      const eventTurnId = asString(event.turnId).trim();
-      if (!eventTurnId) {
-        return false;
-      }
-      const diagnosticTurnId = turnDiagnosticsRef.current.get(event.threadId)?.turnId ?? null;
-      const activeTurnId = getThreadLifecycleSnapshot(event.threadId).activeTurnId;
-      const expectedTurnId = diagnosticTurnId ?? activeTurnId;
-      if (!expectedTurnId || expectedTurnId === eventTurnId) {
-        return false;
-      }
-      emitTurnDiagnostic("late-codex-event-skipped", {
-        ...buildCodexLivenessDiagnostic({
-          workspaceId: event.workspaceId,
-          threadId: event.threadId,
-          stage: "abandoned",
-          outcome: "abandoned",
-          source: event.sourceMethod,
-          reason: "event turn id does not match active Codex turn",
-          turnId: eventTurnId,
-        }),
-        eventTurnId,
-        activeTurnId,
-        expectedTurnId,
+      return shouldSkipCodexTurnEvent({
+        engine: event.engine,
+        workspaceId: event.workspaceId,
+        threadId: event.threadId,
+        turnId: asString(event.turnId).trim(),
         operation: event.operation,
         sourceMethod: event.sourceMethod,
-        diagnosticCategory: "late-codex-event",
-      }, { force: true });
-      return true;
+      });
     },
-    [emitTurnDiagnostic, getThreadLifecycleSnapshot],
+    [shouldSkipCodexTurnEvent],
   );
 
   const onNormalizedRealtimeEventTracked = useCallback(
@@ -1348,12 +1533,24 @@ export function useThreadEventHandlers({
       workspaceId: string,
       threadId: string,
       turnId: string,
-      payload: { message: string; willRetry: boolean },
+      payload: {
+        message: string;
+        willRetry: boolean;
+        engine?: ConversationEngine | null;
+      },
     ) => {
       onTurnError(workspaceId, threadId, turnId, payload);
       if (payload.willRetry) {
         return;
       }
+      quarantineCodexTurn(
+        workspaceId,
+        threadId,
+        turnId,
+        "turn-error",
+        "turn/error",
+        payload.engine,
+      );
       const diagnostic = turnDiagnosticsRef.current.get(threadId);
       if (diagnostic && diagnostic.turnId !== turnId) {
         return;
@@ -1363,7 +1560,7 @@ export function useThreadEventHandlers({
         willRetry: payload.willRetry,
       });
     },
-    [finalizeTurnDiagnostic, onTurnError],
+    [finalizeTurnDiagnostic, onTurnError, quarantineCodexTurn],
   );
 
   const onTurnStalledTracked = useCallback(
@@ -1378,9 +1575,18 @@ export function useThreadEventHandlers({
         source: string;
         startedAtMs: number | null;
         timeoutMs: number | null;
+        engine?: ConversationEngine | null;
       },
     ) => {
       onTurnStalled(workspaceId, threadId, turnId, payload);
+      quarantineCodexTurn(
+        workspaceId,
+        threadId,
+        turnId,
+        payload.reasonCode || "turn-stalled",
+        payload.source || "turn/stalled",
+        payload.engine,
+      );
       const diagnostic = turnDiagnosticsRef.current.get(threadId);
       if (diagnostic && diagnostic.turnId !== turnId) {
         return;
@@ -1395,7 +1601,7 @@ export function useThreadEventHandlers({
         timeoutMs: payload.timeoutMs,
       });
     },
-    [finalizeTurnDiagnostic, onTurnStalled],
+    [finalizeTurnDiagnostic, onTurnStalled, quarantineCodexTurn],
   );
 
   settleCodexNoProgressTurnRef.current = (threadId: string) => {
@@ -1413,6 +1619,7 @@ export function useThreadEventHandlers({
       source: "codex-foreground-no-progress",
       startedAtMs: diagnostic.startedAt,
       timeoutMs,
+      engine: "codex",
     });
   };
 

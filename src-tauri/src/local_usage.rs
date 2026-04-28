@@ -828,6 +828,7 @@ fn parse_codex_session_summary(
     let mut modified_lines = 0_i64;
     let mut max_diff_stat_lines = 0_i64;
     let mut pending_apply_patch_lines: HashMap<String, i64> = HashMap::new();
+    let mut response_item_user_summary: Option<String> = None;
 
     for line in reader.lines() {
         let line = match line {
@@ -863,9 +864,9 @@ fn parse_codex_session_summary(
                         .unwrap_or("");
                     if role == "user" {
                         saw_session_signal = true;
-                        if summary.is_none() {
+                        if response_item_user_summary.is_none() {
                             if let Some(message) = extract_codex_message_text(payload) {
-                                summary = truncate_summary(&message);
+                                response_item_user_summary = truncate_summary(&message);
                             }
                         }
                     }
@@ -968,7 +969,7 @@ fn parse_codex_session_summary(
                     .get("type")
                     .and_then(|value| value.as_str())
                     .unwrap_or("");
-                if payload_type == "user_message" {
+                if matches!(payload_type, "user_message" | "userMessage") {
                     saw_session_signal = true;
                     if let Some(message) = payload.get("message").and_then(|value| value.as_str()) {
                         summary = truncate_summary(message);
@@ -1085,6 +1086,7 @@ fn parse_codex_session_summary(
     }
 
     if summary.is_none()
+        && response_item_user_summary.is_none()
         && usage.total_tokens == 0
         && modified_lines == 0
         && canonical_session_id.is_none()
@@ -1114,6 +1116,8 @@ fn parse_codex_session_summary(
             .unwrap_or_default()
             .as_millis() as i64
     };
+
+    let summary = summary.or(response_item_user_summary);
 
     Ok(Some(LocalUsageSessionSummary {
         session_id,

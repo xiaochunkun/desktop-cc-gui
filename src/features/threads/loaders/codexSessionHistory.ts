@@ -189,6 +189,17 @@ function toEntryList(input: unknown): CodexSessionEntry[] {
   return entries.map(asRecord).filter((entry) => Object.keys(entry).length > 0);
 }
 
+function hasCodexEventUserMessage(entries: CodexSessionEntry[]) {
+  return entries.some((entry) => {
+    if (asString(entry.type).trim() !== "event_msg") {
+      return false;
+    }
+    const payload = asRecord(entry.payload);
+    const payloadType = asString(payload.type).trim();
+    return payloadType === "user_message" || payloadType === "userMessage";
+  });
+}
+
 function parseJsonRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "string") {
     return asRecord(value);
@@ -963,6 +974,7 @@ function annotateCodexFinalMessageMetadata(
 
 export function parseCodexSessionHistory(input: unknown): ConversationItem[] {
   const entries = toEntryList(input);
+  const preferEventUserMessages = hasCodexEventUserMessage(entries);
   const items: ConversationItem[] = [];
   const pendingCommands = new Map<string, PendingCommandExecution>();
   const pendingApplyPatches = new Map<string, PendingApplyPatch>();
@@ -1084,6 +1096,9 @@ export function parseCodexSessionHistory(input: unknown): ConversationItem[] {
 
       if (payloadType === "message") {
         const role = asString(payload.role).trim();
+        if (role === "user" && preferEventUserMessages) {
+          return;
+        }
         const message =
           role === "user"
             ? buildUserMessageItem(payload, `codex-user-message-${index + 1}`)
@@ -1103,7 +1118,7 @@ export function parseCodexSessionHistory(input: unknown): ConversationItem[] {
 
     if (entryType === "event_msg") {
       const payloadType = asString(payload.type).trim();
-      if (payloadType === "user_message") {
+      if (payloadType === "user_message" || payloadType === "userMessage") {
         const message = buildUserMessageItem(payload, `codex-user-message-${index + 1}`);
         if (message) {
           if (entryTimestampMs !== null) {

@@ -297,10 +297,13 @@ describe("useThreadEventHandlers diagnostics", () => {
     ).toBe(false);
 
     act(() => {
-      vi.advanceTimersByTime(
-        CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS -
-          CODEX_TURN_NO_PROGRESS_STALL_MS,
-      );
+      vi.advanceTimersByTime(15 * 60_000 - CODEX_TURN_NO_PROGRESS_STALL_MS);
+    });
+
+    expect(options.markProcessing).not.toHaveBeenCalledWith("thread-1", false);
+
+    act(() => {
+      vi.advanceTimersByTime(CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS - 15 * 60_000);
     });
 
     expect(options.markProcessing).toHaveBeenCalledWith("thread-1", false);
@@ -311,6 +314,183 @@ describe("useThreadEventHandlers diagnostics", () => {
       CODEX_EXECUTION_ACTIVE_NO_PROGRESS_STALL_MS,
     );
     expect(stalledEntry?.payload.activeExecutionItemCount).toBe(1);
+  });
+
+  it("keeps quarantined late codex normalized events diagnostic-only after stalled settlement", () => {
+    const onDebug = vi.fn();
+    const options = makeOptions(onDebug);
+    const { result } = renderHook(() => useThreadEventHandlers(options));
+
+    act(() => {
+      result.current.onTurnStarted("ws-1", "thread-1", "turn-1");
+      vi.advanceTimersByTime(CODEX_TURN_NO_PROGRESS_STALL_MS);
+    });
+
+    expect(options.markProcessing).toHaveBeenCalledWith("thread-1", false);
+    options.dispatch.mockClear();
+    options.markProcessing.mockClear();
+    options.setActiveTurnId.mockClear();
+    onDebug.mockClear();
+
+    act(() => {
+      result.current.onNormalizedRealtimeEvent({
+        engine: "codex",
+        workspaceId: "ws-1",
+        threadId: "thread-1",
+        eventId: "late-event-1",
+        itemKind: "message",
+        timestampMs: Date.now(),
+        item: {
+          kind: "message",
+          id: "assistant-late",
+          role: "assistant",
+          text: "late predecessor output",
+        },
+        operation: "appendAgentMessageDelta",
+        sourceMethod: "item/updated",
+        delta: "late predecessor output",
+        rawItem: null,
+        rawUsage: null,
+        turnId: "turn-1",
+      });
+    });
+
+    expect(options.dispatch).not.toHaveBeenCalled();
+    expect(options.markProcessing).not.toHaveBeenCalledWith("thread-1", true);
+    expect(options.setActiveTurnId).not.toHaveBeenCalledWith("thread-1", "turn-1");
+    const skippedEntry = collectDiagnosticCalls(onDebug).find(
+      (entry) => entry.label === "thread/session:turn-diagnostic:quarantined-codex-event-skipped",
+    );
+    expect(skippedEntry?.payload.eventTurnId).toBe("turn-1");
+    expect(skippedEntry?.payload.quarantineReason).toBe("codex_no_progress_timeout");
+
+    act(() => {
+      result.current.onTurnStarted("ws-1", "thread-1", "turn-2");
+    });
+    options.dispatch.mockClear();
+    onDebug.mockClear();
+
+    act(() => {
+      result.current.onNormalizedRealtimeEvent({
+        engine: "codex",
+        workspaceId: "ws-1",
+        threadId: "thread-1",
+        eventId: "successor-event-1",
+        itemKind: "message",
+        timestampMs: Date.now(),
+        item: {
+          kind: "message",
+          id: "assistant-successor",
+          role: "assistant",
+          text: "successor output",
+        },
+        operation: "appendAgentMessageDelta",
+        sourceMethod: "item/updated",
+        delta: "successor output",
+        rawItem: null,
+        rawUsage: null,
+        turnId: "turn-2",
+      });
+    });
+
+    expect(options.dispatch).toHaveBeenCalledWith({
+      type: "markContinuationEvidence",
+      threadId: "thread-1",
+    });
+    expect(
+      collectDiagnosticCalls(onDebug).some(
+        (entry) => entry.label === "thread/session:turn-diagnostic:quarantined-codex-event-skipped",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps backend-stalled late raw codex item events diagnostic-only", () => {
+    const onDebug = vi.fn();
+    const options = makeOptions(onDebug);
+    const { result } = renderHook(() => useThreadEventHandlers(options));
+
+    act(() => {
+      result.current.onTurnStarted("ws-1", "thread-1", "turn-1");
+      result.current.onTurnStalled("ws-1", "thread-1", "turn-1", {
+        message: "runtime reported stalled",
+        reasonCode: "resume_pending_timeout",
+        stage: "stalled",
+        source: "turn/stalled",
+        startedAtMs: null,
+        timeoutMs: 180_000,
+      });
+    });
+
+    options.dispatch.mockClear();
+    options.markProcessing.mockClear();
+    options.setActiveTurnId.mockClear();
+    onDebug.mockClear();
+
+    act(() => {
+      result.current.onItemUpdated("ws-1", "thread-1", {
+        id: "cmd-1",
+        type: "commandExecution",
+        turnId: "turn-1",
+      });
+    });
+
+    expect(options.dispatch).not.toHaveBeenCalled();
+    expect(options.markProcessing).not.toHaveBeenCalledWith("thread-1", true);
+    expect(options.setActiveTurnId).not.toHaveBeenCalledWith("thread-1", "turn-1");
+    const skippedEntry = collectDiagnosticCalls(onDebug).find(
+      (entry) => entry.label === "thread/session:turn-diagnostic:quarantined-codex-event-skipped",
+    );
+    expect(skippedEntry?.payload.eventTurnId).toBe("turn-1");
+    expect(skippedEntry?.payload.quarantineReason).toBe("resume_pending_timeout");
+  });
+
+  it("does not quarantine shared claude stalled turns as codex", () => {
+    const onDebug = vi.fn();
+    const options = makeOptions(onDebug);
+    const { result } = renderHook(() => useThreadEventHandlers(options));
+
+    act(() => {
+      result.current.onTurnStarted(
+        "ws-1",
+        "shared:thread-claude-stalled",
+        "turn-claude-1",
+      );
+      result.current.onTurnStalled(
+        "ws-1",
+        "shared:thread-claude-stalled",
+        "turn-claude-1",
+        {
+          message: "runtime reported stalled",
+          reasonCode: "resume_pending_timeout",
+          stage: "stalled",
+          source: "turn/stalled",
+          startedAtMs: null,
+          timeoutMs: 180_000,
+          engine: "claude",
+        },
+      );
+    });
+
+    options.dispatch.mockClear();
+    onDebug.mockClear();
+
+    act(() => {
+      result.current.onItemUpdated("ws-1", "shared:thread-claude-stalled", {
+        id: "cmd-claude-1",
+        type: "commandExecution",
+        turnId: "turn-claude-1",
+      });
+    });
+
+    expect(options.dispatch).toHaveBeenCalledWith({
+      type: "markContinuationEvidence",
+      threadId: "shared:thread-claude-stalled",
+    });
+    expect(
+      collectDiagnosticCalls(onDebug).some(
+        (entry) => entry.label === "thread/session:turn-diagnostic:quarantined-codex-event-skipped",
+      ),
+    ).toBe(false);
   });
 
   it("returns to the base no-progress window when an execution completion only carries item id", () => {

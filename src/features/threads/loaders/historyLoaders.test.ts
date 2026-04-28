@@ -206,6 +206,57 @@ describe("history loaders", () => {
     ]);
   });
 
+  it("prefers Codex event_msg user messages over response_item user mirrors", () => {
+    const items = parseCodexSessionHistory({
+      entries: [
+        {
+          type: "response_item",
+          timestamp: "2026-04-28T10:00:00.000Z",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "response_item injected wrapper",
+              },
+            ],
+          },
+        },
+        {
+          type: "event_msg",
+          timestamp: "2026-04-28T10:00:01.000Z",
+          payload: {
+            type: "user_message",
+            message: "真实用户请求",
+          },
+        },
+        {
+          type: "response_item",
+          timestamp: "2026-04-28T10:00:02.000Z",
+          payload: {
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "真实回复" }],
+          },
+        },
+      ],
+    });
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        kind: "message",
+        role: "user",
+        text: "真实用户请求",
+      }),
+      expect.objectContaining({
+        kind: "message",
+        role: "assistant",
+        text: "真实回复",
+      }),
+    ]);
+  });
+
   it("hydrates codex final completion time and duration from turn item timestamps", async () => {
     const startedAt = "2026-04-01T08:00:00.000Z";
     const completedAt = "2026-04-01T08:00:07.000Z";

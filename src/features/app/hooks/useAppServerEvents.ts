@@ -8,7 +8,10 @@ import type {
   RequestUserInputRequest,
 } from "../../../types";
 import { subscribeAppServerEvents } from "../../../services/events";
-import type { NormalizedThreadEvent } from "../../threads/contracts/conversationCurtainContracts";
+import type {
+  ConversationEngine,
+  NormalizedThreadEvent,
+} from "../../threads/contracts/conversationCurtainContracts";
 import {
   getRealtimeAdapterByEngine,
   inferRealtimeAdapterEngine,
@@ -27,6 +30,23 @@ type AgentDelta = {
   threadId: string;
   itemId: string;
   delta: string;
+  turnId?: string | null;
+};
+
+type TurnErrorPayload = {
+  message: string;
+  willRetry: boolean;
+  engine?: ConversationEngine | null;
+};
+
+type TurnStalledPayload = {
+  message: string;
+  reasonCode: string;
+  stage: string;
+  source: string;
+  startedAtMs: number | null;
+  timeoutMs: number | null;
+  engine?: ConversationEngine | null;
 };
 
 type AgentCompleted = {
@@ -95,20 +115,13 @@ type AppServerEventHandlers = {
     workspaceId: string,
     threadId: string,
     turnId: string,
-    payload: { message: string; willRetry: boolean },
+    payload: TurnErrorPayload,
   ) => void;
   onTurnStalled?: (
     workspaceId: string,
     threadId: string,
     turnId: string,
-    payload: {
-      message: string;
-      reasonCode: string;
-      stage: string;
-      source: string;
-      startedAtMs: number | null;
-      timeoutMs: number | null;
-    },
+    payload: TurnStalledPayload,
   ) => void;
   onTurnPlanUpdated?: (
     workspaceId: string,
@@ -220,6 +233,18 @@ function extractThreadIdFromParams(params: Record<string, unknown>): string {
   ).trim();
 }
 
+function extractTurnIdFromParams(params: Record<string, unknown>): string {
+  const turn = (params.turn as Record<string, unknown> | undefined) ?? {};
+  return asString(
+    params.turnId ??
+      params.turn_id ??
+      turn.id ??
+      turn.turnId ??
+      turn.turn_id ??
+      "",
+  ).trim();
+}
+
 function extractItemIdFromParams(params: Record<string, unknown>): string {
   const turn = (params.turn as Record<string, unknown> | undefined) ?? {};
   const itemObj = (params.item as Record<string, unknown> | undefined) ?? {};
@@ -267,7 +292,7 @@ function extractReasoningDeltaFromParams(params: Record<string, unknown>): strin
 function extractAgentMessageDeltaPayload(
   method: string,
   params: Record<string, unknown>,
-): { threadId: string; itemId: string; delta: string } | null {
+): { threadId: string; itemId: string; delta: string; turnId: string | null } | null {
   const isTextAliasMethod = method === "text:delta" || method === "text/delta";
   const isAgentDeltaMethod =
     method === "item/agentMessage/delta" ||
@@ -283,6 +308,7 @@ function extractAgentMessageDeltaPayload(
   const messageObj = (params.message as Record<string, unknown> | undefined) ?? {};
   const partObj = (params.part as Record<string, unknown> | undefined) ?? {};
   const threadId = extractThreadIdFromParams(params);
+  const turnId = extractTurnIdFromParams(params);
   if (
     isTextAliasMethod &&
     !isClaudeThreadId(threadId) &&
@@ -325,7 +351,28 @@ function extractAgentMessageDeltaPayload(
   if (!threadId || !itemId || !delta) {
     return null;
   }
-  return { threadId, itemId, delta };
+  return { threadId, itemId, delta, turnId: turnId || null };
+}
+
+function withRealtimeItemEventContext(
+  item: Record<string, unknown>,
+  params: Record<string, unknown>,
+  engineSource?: ConversationEngine,
+): Record<string, unknown> {
+  const turnId = extractTurnIdFromParams(params);
+  const existingTurnId = asString(item.turnId ?? item.turn_id).trim();
+  return {
+    ...item,
+    ...(turnId && !existingTurnId ? { turnId } : {}),
+    ...(engineSource ? { engineSource } : {}),
+  };
+}
+
+function resolveEventEngine(
+  threadId: string,
+  engineHint?: ConversationEngine | null,
+): ConversationEngine {
+  return engineHint ?? inferRealtimeAdapterEngine(threadId);
 }
 
 function cloneMessageWithThreadId(
@@ -1105,6 +1152,7 @@ export function useAppServerEvents(
           threadId: effectiveThreadId,
           itemId: agentDeltaPayload.itemId,
           delta: agentDeltaPayload.delta,
+          ...(agentDeltaPayload.turnId ? { turnId: agentDeltaPayload.turnId } : {}),
         });
         return;
       }
@@ -1237,6 +1285,7 @@ export function useAppServerEvents(
         handlers.onTurnError?.(workspace_id, threadId, "", {
           message: messageText,
           willRetry: false,
+          engine: "codex",
         });
         return;
       }
@@ -1312,9 +1361,11 @@ export function useAppServerEvents(
         const shouldUseSingleAffectedTurnId =
           uniqueTargetThreadIds.length === 1 && affectedTurnIds.length === 1;
         uniqueTargetThreadIds.forEach((targetThreadId) => {
-          const reboundThreadId =
-            resolveSharedSessionBindingByNativeThread(workspace_id, targetThreadId)
-              ?.sharedThreadId ?? targetThreadId;
+          const reboundBinding = resolveSharedSessionBindingByNativeThread(
+            workspace_id,
+            targetThreadId,
+          );
+          const reboundThreadId = reboundBinding?.sharedThreadId ?? targetThreadId;
           if (!reboundThreadId) {
             return;
           }
@@ -1324,6 +1375,7 @@ export function useAppServerEvents(
           handlers.onTurnError?.(workspace_id, reboundThreadId, targetTurnId, {
             message: normalizedMessage,
             willRetry: false,
+            engine: resolveEventEngine(reboundThreadId, reboundBinding?.engine),
           });
         });
         return;
@@ -1345,6 +1397,7 @@ export function useAppServerEvents(
           handlers.onTurnError?.(workspace_id, threadId, turnId, {
             message: messageText,
             willRetry,
+            engine: resolveEventEngine(threadId, sharedBridge?.engine),
           });
         }
         return;
@@ -1386,6 +1439,7 @@ export function useAppServerEvents(
               Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0
                 ? Math.trunc(rawTimeoutMs)
                 : null,
+            engine: resolveEventEngine(threadId, sharedBridge?.engine),
           });
         }
         return;
@@ -1415,6 +1469,7 @@ export function useAppServerEvents(
           handlers.onTurnError?.(workspace_id, threadId, turnId, {
             message: messageText,
             willRetry,
+            engine: resolveEventEngine(threadId, sharedBridge?.engine),
           });
         }
         return;
@@ -1703,14 +1758,16 @@ export function useAppServerEvents(
               )
             : undefined;
         if (threadId && item) {
-          if (itemBridge) {
-            item.engineSource = itemBridge.engine;
-          }
-          handlers.onItemCompleted?.(workspace_id, threadId, item);
+          const contextualItem = withRealtimeItemEventContext(
+            item,
+            params,
+            itemBridge?.engine,
+          );
+          handlers.onItemCompleted?.(workspace_id, threadId, contextualItem);
 
           // Try to extract usage data from item/completed (Codex may include it here)
           const usage =
-            (item.usage as Record<string, unknown> | undefined) ??
+            (contextualItem.usage as Record<string, unknown> | undefined) ??
             (params.usage as Record<string, unknown> | undefined);
 
           if (usage) {
@@ -1749,8 +1806,13 @@ export function useAppServerEvents(
           }
         }
         if (threadId && item?.type === "agentMessage") {
-          const itemId = String(item.id ?? "");
-          const text = String(item.text ?? "");
+          const contextualItem = withRealtimeItemEventContext(
+            item,
+            params,
+            itemBridge?.engine,
+          );
+          const itemId = String(contextualItem.id ?? "");
+          const text = String(contextualItem.text ?? "");
           if (
             itemId &&
             markThreadAgentCompletionSeen(
@@ -1786,13 +1848,15 @@ export function useAppServerEvents(
               )
             : undefined;
         if (threadId && item) {
-          if (itemBridge) {
-            item.engineSource = itemBridge.engine;
-          }
+          const contextualItem = withRealtimeItemEventContext(
+            item,
+            params,
+            itemBridge?.engine,
+          );
           if (
             shouldIgnoreAgentMessageSnapshot({
               threadId,
-              itemType: String(item.type ?? ""),
+              itemType: String(contextualItem.type ?? ""),
               method,
               threadAgentDeltaSeenRef,
             })
@@ -1800,12 +1864,12 @@ export function useAppServerEvents(
             return;
           }
           if (
-            String(item.type ?? "") === "agentMessage" &&
-            hasAgentMessageSnapshotText(item)
+            String(contextualItem.type ?? "") === "agentMessage" &&
+            hasAgentMessageSnapshotText(contextualItem)
           ) {
             threadAgentDeltaSeenRef.current[threadId] = true;
           }
-          handlers.onItemStarted?.(workspace_id, threadId, item);
+          handlers.onItemStarted?.(workspace_id, threadId, contextualItem);
         }
         return;
       }
@@ -1825,13 +1889,15 @@ export function useAppServerEvents(
               )
             : undefined;
         if (threadId && item) {
-          if (itemBridge) {
-            item.engineSource = itemBridge.engine;
-          }
+          const contextualItem = withRealtimeItemEventContext(
+            item,
+            params,
+            itemBridge?.engine,
+          );
           if (
             shouldIgnoreAgentMessageSnapshot({
               threadId,
-              itemType: String(item.type ?? ""),
+              itemType: String(contextualItem.type ?? ""),
               method,
               threadAgentDeltaSeenRef,
             })
@@ -1839,12 +1905,12 @@ export function useAppServerEvents(
             return;
           }
           if (
-            String(item.type ?? "") === "agentMessage" &&
-            hasAgentMessageSnapshotText(item)
+            String(contextualItem.type ?? "") === "agentMessage" &&
+            hasAgentMessageSnapshotText(contextualItem)
           ) {
             threadAgentDeltaSeenRef.current[threadId] = true;
           }
-          handlers.onItemUpdated?.(workspace_id, threadId, item);
+          handlers.onItemUpdated?.(workspace_id, threadId, contextualItem);
         }
         return;
       }
