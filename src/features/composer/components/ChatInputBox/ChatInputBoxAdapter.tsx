@@ -782,6 +782,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
       () => readStoredStreamingEnabled(),
     );
     const [codexSpeedMode, setCodexSpeedMode] = useState<CodexSpeedMode>('unknown');
+    const isCodexEngine = selectedEngine === 'codex';
     const normalizedModels = useMemo(() => {
       if (!models || models.length === 0) {
         return undefined;
@@ -820,7 +821,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
     }));
 
     useEffect(() => {
-      if (alwaysThinkingEnabled !== undefined) {
+      if (isCodexEngine || alwaysThinkingEnabled !== undefined) {
         return;
       }
       let cancelled = false;
@@ -854,7 +855,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
       return () => {
         cancelled = true;
       };
-    }, [alwaysThinkingEnabled]);
+    }, [alwaysThinkingEnabled, isCodexEngine]);
 
     // Handle input from ChatInputBox -> Composer text state
     const handleInput = useCallback((content: string) => {
@@ -890,6 +891,9 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
 
     const handleThinkingToggle = useCallback(
       async (enabled: boolean) => {
+        if (isCodexEngine) {
+          return;
+        }
         setLocalAlwaysThinkingEnabled(enabled);
         if (onToggleThinking) {
           onToggleThinking(enabled);
@@ -920,11 +924,14 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
           }
         }
       },
-      [localAlwaysThinkingEnabled, onToggleThinking],
+      [isCodexEngine, localAlwaysThinkingEnabled, onToggleThinking],
     );
 
     const handleStreamingToggle = useCallback(
       (enabled: boolean) => {
+        if (isCodexEngine) {
+          return;
+        }
         setLocalStreamingEnabled(enabled);
         if (typeof window !== 'undefined' && window.localStorage) {
           window.localStorage.setItem(
@@ -934,7 +941,7 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         }
         onStreamingEnabledChange?.(enabled);
       },
-      [onStreamingEnabledChange],
+      [isCodexEngine, onStreamingEnabledChange],
     );
 
     const handleProviderSelect = useCallback((providerId: string) => {
@@ -956,6 +963,18 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
     const handleCodexReviewQuickStart = useCallback(() => {
       void onCodexQuickCommand?.('/review');
     }, [onCodexQuickCommand]);
+
+    const resolvedAlwaysThinkingEnabled = isCodexEngine
+      ? true
+      : alwaysThinkingEnabled !== undefined
+        ? alwaysThinkingEnabled
+        : localAlwaysThinkingEnabled;
+
+    const resolvedStreamingEnabled = isCodexEngine
+      ? true
+      : streamingEnabled !== undefined
+        ? streamingEnabled
+        : localStreamingEnabled;
 
     // Convert context usage
     const usagePercentage = useMemo(() => {
@@ -1479,15 +1498,9 @@ export const ChatInputBoxAdapter = memo(forwardRef<ChatInputBoxHandle, ChatInput
         onProviderSelect={onSelectEngine ? handleProviderSelect : undefined}
         reasoningEffort={effortToReasoning(selectedEffort)}
         onReasoningChange={onSelectEffort ? handleReasoningChange : undefined}
-        alwaysThinkingEnabled={
-          alwaysThinkingEnabled !== undefined
-            ? alwaysThinkingEnabled
-            : localAlwaysThinkingEnabled
-        }
+        alwaysThinkingEnabled={resolvedAlwaysThinkingEnabled}
         onToggleThinking={handleThinkingToggle}
-        streamingEnabled={
-          streamingEnabled !== undefined ? streamingEnabled : localStreamingEnabled
-        }
+        streamingEnabled={resolvedStreamingEnabled}
         onStreamingEnabledChange={handleStreamingToggle}
         selectedAgent={selectedAgent}
         selectedContextChips={selectedContextChips}
