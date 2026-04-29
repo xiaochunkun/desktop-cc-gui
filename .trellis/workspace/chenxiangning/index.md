@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-7.md`
-- **Total Sessions**: 224
+- **Total Sessions**: 225
 - **Last Active**: 2026-04-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-7.md` | ~1149 | Active |
+| `journal-7.md` | ~1211 | Active |
 | `journal-6.md` | ~1961 | Archived |
 | `journal-5.md` | ~1949 | Archived |
 | `journal-4.md` | ~1975 | Archived |
@@ -35,6 +35,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 225 | 2026-04-29 | 实现 modeBlocked 与 Codex resume settlement 对齐 | `d84148b1` | `feature/v0.4.11` |
 | 224 | 2026-04-29 | 修复 CI sentry 抖动与 Actions 升级 | `5a04ad5d` | `feature/v0.4.11` |
 | 223 | 2026-04-29 | 收紧对话完成邮件正文内容 | `2d744bb9fb07099b5425fdb24c6d7c74c67add4a` | `feature/v0.4.11` |
 | 222 | 2026-04-29 | Codex 默认隐藏 streaming/thinking 开关 | `e860cdc3e0298963f25091c27c46e8bb55b2f86d` | `feature/v0.4.11` |

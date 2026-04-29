@@ -1147,3 +1147,65 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 225: 实现 modeBlocked 与 Codex resume settlement 对齐
+
+**Date**: 2026-04-29
+**Task**: 实现 modeBlocked 与 Codex resume settlement 对齐
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+完成前端 modeBlocked 结算与 Codex runtime resume-pending timeout 收口
+
+### Main Changes
+
+## 任务目标
+- 实现 OpenSpec change `fix-mode-blocked-and-codex-resume-settlement`
+- 修复共享幕布对 requestUserInput 型 modeBlocked 的伪 processing 残留
+- 修复 Codex runtime 在 resume-pending timeout 后仍保留 active-work protection 的状态漂移
+
+## 主要改动
+- 前端新增 requestUserInput 型 `modeBlocked` 判定 helper，收敛到与 `requestUserInput` 相同的 waiting-for-user-choice settlement 路径。
+- `onModeBlocked` 现在只对 requestUserInput blocked 清理 `processing` / `activeTurnId` / `settleThreadPlanInProgress`，其它 blocked 仍保持 explain-only。
+- Codex runtime 新增 foreground timeout settlement，timeout 后释放当前 continuity/protection，并把最近一次 timeout 记录到 `lastRecoverySource` / `lastGuardState`。
+- `start_resume_pending_watch()` timeout 分支接入 runtime settlement，保证 thread surface 与 runtime pool row 语义对齐。
+- 补充前端与 Rust 回归测试，并把 OpenSpec tasks 全部勾完成。
+
+## 涉及模块
+- `src/features/threads/hooks/useThreadEventHandlers.ts`
+- `src/features/threads/hooks/useThreadEventHandlers.test.ts`
+- `src-tauri/src/backend/app_server.rs`
+- `src-tauri/src/runtime/mod.rs`
+- `src-tauri/src/runtime/tests.rs`
+- `openspec/changes/fix-mode-blocked-and-codex-resume-settlement/*`
+
+## 验证结果
+- `npm exec vitest run src/features/threads/hooks/useThreadEventHandlers.test.ts`
+- `cargo test --manifest-path src-tauri/Cargo.toml settle_foreground_work_timeout -- --nocapture`
+- `cargo test --manifest-path src-tauri/Cargo.toml terminal_turn_events_clear_foreground_resume_pending_continuity -- --nocapture`
+- `npm run typecheck`
+- `openspec validate "fix-mode-blocked-and-codex-resume-settlement" --type change --strict`
+
+## 后续事项
+- 如需进一步收口，可补一条 app-server 层 integration test，直接覆盖 `start_resume_pending_watch()` timeout -> runtime row settlement 的联动链。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d84148b1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
