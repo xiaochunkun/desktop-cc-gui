@@ -1035,3 +1035,59 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 223: 收紧对话完成邮件正文内容
+
+**Date**: 2026-04-29
+**Task**: 收紧对话完成邮件正文内容
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+将 completion email 正文收紧为仅保留 user/assistant 与 fileChange 摘要，并同步更新 OpenSpec 与单测。
+
+### Main Changes
+
+任务目标
+- 检查对话完成邮件的正文规则，减少邮件噪音。
+- 去掉工具调用信息，仅保留 user/assistant 正文与 fileChange 卡片摘要。
+
+主要改动
+- 收紧 src/features/threads/utils/conversationCompletionEmail.ts 的正文组装逻辑，仅筛选 fileChange 工具卡片。
+- 删除 commandExecution、diff、review、generatedImage、explore 等非 fileChange 活动的邮件正文拼装。
+- 更新 conversationCompletionEmail 单测，覆盖“仅保留 fileChange”与“排除非 fileChange 活动”两类断言。
+- 同步更新 openspec/changes/add-conversation-email-notification 的 proposal、design、spec，确保规范与实现一致。
+
+涉及模块
+- src/features/threads/utils/conversationCompletionEmail.ts
+- src/features/threads/utils/conversationCompletionEmail.test.ts
+- openspec/changes/add-conversation-email-notification/**
+
+验证结果
+- 已通过: npx vitest run src/features/threads/utils/conversationCompletionEmail.test.ts
+- 已做: conversationCompletionEmail 相关 TS 文件轻量 ESLint 检查
+- 未执行: 全量 npm run lint / npm run typecheck / npm run test
+
+后续事项
+- 如需进一步缩短邮件，可继续把多张 fileChange 卡片压缩成去重路径列表。
+- 当前仓库仍存在与本次提交无关的未提交改动，未一并处理。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2d744bb9fb07099b5425fdb24c6d7c74c67add4a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
