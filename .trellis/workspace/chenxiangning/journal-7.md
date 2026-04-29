@@ -1341,3 +1341,54 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 228: CI sentry workflow 权限门禁修复
+
+**Date**: 2026-04-29
+**Task**: CI sentry workflow 权限门禁修复
+**Branch**: `feature/v0.4.11`
+
+### Summary
+
+为两个 sentry workflow 补齐最小权限声明，消除 workflow token 权限过宽的门禁风险。
+
+### Main Changes
+
+| 模块 | 说明 |
+|------|------|
+| GitHub Actions | 为 `heavy-test-noise-sentry.yml` 与 `large-file-governance.yml` 新增 `permissions: contents: read` |
+| 安全边界 | 显式收敛 `GITHUB_TOKEN` 为只读权限，满足 least-privilege 预期 |
+| 行为影响 | 不修改 trigger、job 结构、脚本入口或执行语义，仅修复 YAML 级权限边界 |
+
+**涉及文件**:
+- `.github/workflows/heavy-test-noise-sentry.yml`
+- `.github/workflows/large-file-governance.yml`
+
+**验证结果**:
+- `node --test scripts/check-heavy-test-noise.test.mjs` 通过
+- `npm run check:large-files:near-threshold` 通过（仅 watch 级 warning，无 fail）
+- `npm run check:large-files:gate` 通过
+- `npm run check:heavy-test-noise` 本地完整通过；唯一 warning 为 allowlist 内的 environment warning，不属于 repo-owned noise
+
+**后续事项**:
+- 如需进一步清理本地 npm warning，可单独检查 `electron_mirror` 相关环境变量或 npm 配置；不属于本次仓库门禁修复范围
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0b25913f890407eb0c98bca96eafd820b71f6486` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
