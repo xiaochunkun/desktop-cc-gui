@@ -1007,6 +1007,7 @@ const enPart1 = {
         rightActivityToolbar: "Right activity toolbar",
         bottomActivityPanel: "Bottom activity panel",
         cornerStatusIndicator: "Conversation canvas",
+        globalRuntimeNoticeDock: "Runtime notice dock",
       },
       panelDescriptions: {
         topSessionTabs: "Open-session tabs above the workspace header.",
@@ -1015,6 +1016,8 @@ const enPart1 = {
         rightActivityToolbar: "Right-side entries for activity, radar, Git, files, and search.",
         bottomActivityPanel: "Docked task, agent, edit, and latest-message status panel.",
         cornerStatusIndicator: "Sticky user bubble and message anchor rail in the conversation canvas.",
+        globalRuntimeNoticeDock:
+          "Global bottom-right runtime notice entry and expandable notice panel.",
       },
       controls: {
         topRunStart: "Launch script buttons",

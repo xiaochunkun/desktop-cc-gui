@@ -102,6 +102,7 @@ const CLIENT_UI_VISIBILITY_ICON_COMPONENTS: Record<ClientUiVisibilityIconKey, Lu
   focus: Focus,
   folder: Folder,
   gitBranch: GitBranch,
+  info: Info,
   layoutList: LayoutList,
   listChecks: ListChecks,
   messageSquareQuote: MessageSquareQuote,

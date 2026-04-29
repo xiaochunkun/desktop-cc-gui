@@ -10,6 +10,7 @@ export const CLIENT_UI_PANEL_IDS = [
   "rightActivityToolbar",
   "bottomActivityPanel",
   "cornerStatusIndicator",
+  "globalRuntimeNoticeDock",
 ] as const;
 
 export type ClientUiPanelId = (typeof CLIENT_UI_PANEL_IDS)[number];
@@ -50,6 +51,7 @@ export type ClientUiVisibilityIconKey =
   | "focus"
   | "folder"
   | "gitBranch"
+  | "info"
   | "layoutList"
   | "listChecks"
   | "messageSquareQuote"
@@ -274,6 +276,13 @@ export const CLIENT_UI_PANEL_REGISTRY: readonly ClientUiPanelDefinition[] = [
     descriptionKey: "settings.clientUiVisibility.panelDescriptions.cornerStatusIndicator",
     iconKey: "messageSquareText",
     controls: ["curtain.stickyUserBubble", "cornerStatus.messageAnchors"],
+  },
+  {
+    id: "globalRuntimeNoticeDock",
+    labelKey: "settings.clientUiVisibility.panels.globalRuntimeNoticeDock",
+    descriptionKey: "settings.clientUiVisibility.panelDescriptions.globalRuntimeNoticeDock",
+    iconKey: "info",
+    controls: [],
   },
 ] as const;
 

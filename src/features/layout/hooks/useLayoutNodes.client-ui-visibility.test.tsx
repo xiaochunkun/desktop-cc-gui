@@ -43,6 +43,7 @@ vi.mock("../../client-ui-visibility/hooks/useClientUiVisibility", () => ({
         rightActivityToolbar: false,
         bottomActivityPanel: false,
         cornerStatusIndicator: false,
+        globalRuntimeNoticeDock: false,
       },
       controls: {
         "topRun.start": false,
@@ -641,15 +642,18 @@ describe("useLayoutNodes client UI visibility", () => {
 
     expect(result.current.rightPanelToolbarNode).toBeNull();
     expect(result.current.planPanelNode).toBeNull();
+    expect(result.current.globalRuntimeNoticeDockNode).toBeNull();
 
     render(
       <>
         {result.current.sidebarNode}
         {result.current.messagesNode}
         {result.current.composerNode}
+        {result.current.globalRuntimeNoticeDockNode}
       </>,
     );
 
+    expect(screen.queryByTestId("runtime-notice-dock")).toBeNull();
     expect(screen.getByTestId("messages")).toBeTruthy();
     expect(screen.getByTestId("messages").dataset.messageAnchors).toBe("false");
     expect(screen.getByTestId("messages").dataset.stickyUserBubble).toBe("false");

@@ -26,6 +26,7 @@ describe("clientUiVisibility", () => {
     const preference = normalizeClientUiVisibilityPreference({
       panels: {
         topSessionTabs: false,
+        globalRuntimeNoticeDock: false,
         futurePanel: false,
       },
       controls: {
@@ -36,13 +37,14 @@ describe("clientUiVisibility", () => {
     });
 
     expect(preference).toEqual({
-      panels: { topSessionTabs: false },
+      panels: { topSessionTabs: false, globalRuntimeNoticeDock: false },
       controls: {
         "topTool.terminal": false,
         "curtain.stickyUserBubble": false,
       },
     });
     expect(isClientUiPanelVisible(preference, "topSessionTabs")).toBe(false);
+    expect(isClientUiPanelVisible(preference, "globalRuntimeNoticeDock")).toBe(false);
     expect(isClientUiControlVisible(preference, "topTool.terminal")).toBe(false);
     expect(isClientUiControlVisible(preference, "curtain.stickyUserBubble")).toBe(false);
   });

@@ -880,6 +880,7 @@ describe("SettingsView Display", () => {
 
     expect(screen.getByText("Client UI visibility")).toBeTruthy();
     expect(screen.getByText("Conversation canvas")).toBeTruthy();
+    expect(screen.getByText("Runtime notice dock")).toBeTruthy();
     expect(screen.getByText("Sticky user bubble")).toBeTruthy();
 
     const topSessionTabsRow = screen
@@ -891,7 +892,10 @@ describe("SettingsView Display", () => {
     const stickyUserBubbleRow = screen
       .getByText("Sticky user bubble")
       .closest(".settings-toggle-row") as HTMLElement | null;
-    if (!topSessionTabsRow || !terminalRow || !stickyUserBubbleRow) {
+    const runtimeNoticeDockRow = screen
+      .getByText("Runtime notice dock")
+      .closest(".settings-toggle-row") as HTMLElement | null;
+    if (!topSessionTabsRow || !terminalRow || !stickyUserBubbleRow || !runtimeNoticeDockRow) {
       throw new Error("Expected client UI visibility rows");
     }
     expect(
@@ -902,6 +906,9 @@ describe("SettingsView Display", () => {
     ).toBeTruthy();
     expect(
       stickyUserBubbleRow.querySelector(".settings-client-ui-visibility-row-icon svg"),
+    ).toBeTruthy();
+    expect(
+      runtimeNoticeDockRow.querySelector(".settings-client-ui-visibility-row-icon svg"),
     ).toBeTruthy();
 
     fireEvent.click(within(topSessionTabsRow).getByRole("switch"));
@@ -923,6 +930,18 @@ describe("SettingsView Display", () => {
         "clientUiVisibility",
         expect.objectContaining({
           controls: expect.objectContaining({ "topTool.terminal": false }),
+        }),
+        { immediate: true },
+      );
+    });
+
+    fireEvent.click(within(runtimeNoticeDockRow).getByRole("switch"));
+    await waitFor(() => {
+      expect(writeClientStoreValue).toHaveBeenCalledWith(
+        "app",
+        "clientUiVisibility",
+        expect.objectContaining({
+          panels: expect.objectContaining({ globalRuntimeNoticeDock: false }),
         }),
         { immediate: true },
       );

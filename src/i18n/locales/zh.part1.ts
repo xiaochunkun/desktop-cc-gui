@@ -1026,6 +1026,7 @@ const zhPart1 = {
         rightActivityToolbar: "右侧活动工具栏",
         bottomActivityPanel: "底部活动面板",
         cornerStatusIndicator: "幕布区域",
+        globalRuntimeNoticeDock: "运行时提示悬浮球",
       },
       panelDescriptions: {
         topSessionTabs: "工作区标题上方的已打开会话 Tab。",
@@ -1034,6 +1035,7 @@ const zhPart1 = {
         rightActivityToolbar: "右侧活动、雷达、Git、文件和搜索入口。",
         bottomActivityPanel: "底部任务、Agent、编辑和最新消息状态面板。",
         cornerStatusIndicator: "对话幕布中的用户气泡吸顶和消息锚点栏。",
+        globalRuntimeNoticeDock: "全局右下角运行时提示入口与可展开提示面板。",
       },
       controls: {
         topRunStart: "启动脚本按钮",

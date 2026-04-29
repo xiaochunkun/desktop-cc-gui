@@ -749,6 +749,8 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
     Object.values(rightToolbarVisibleTabs).some(Boolean);
   const showBottomActivityPanel =
     clientUiVisibility.isPanelVisible("bottomActivityPanel");
+  const showGlobalRuntimeNoticeDock =
+    clientUiVisibility.isPanelVisible("globalRuntimeNoticeDock");
   const bottomActivityVisibleTabs = {
     todo: clientUiVisibility.isControlVisible("bottomActivity.tasks"),
     subagent: clientUiVisibility.isControlVisible("bottomActivity.agents"),
@@ -1612,7 +1614,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
   const errorToastsNode = (
     <ErrorToasts toasts={options.errorToasts} onDismiss={options.onDismissErrorToast} />
   );
-  const globalRuntimeNoticeDockNode = (
+  const globalRuntimeNoticeDockNode = showGlobalRuntimeNoticeDock ? (
     <GlobalRuntimeNoticeDock
       notices={globalRuntimeNoticeDock.notices}
       visibility={globalRuntimeNoticeDock.visibility}
@@ -1621,7 +1623,7 @@ export function useLayoutNodes(options: LayoutNodesOptions): LayoutNodesResult {
       onMinimize={globalRuntimeNoticeDock.minimize}
       onClear={globalRuntimeNoticeDock.clear}
     />
-  );
+  ) : null;
   const homeWorkspaceOptions = getHomeWorkspaceOptions(
     options.groupedWorkspaces,
     options.workspaces,
