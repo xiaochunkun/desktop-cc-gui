@@ -58,6 +58,12 @@ export function resolveCustomThemePresetId(
   return sanitizeThemePresetId(settings.customThemePresetId);
 }
 
+export function shouldApplyCustomThemePresetTokens(
+  theme: AppSettings["theme"],
+): boolean {
+  return theme === "custom";
+}
+
 export function resolveEffectiveThemeAppearance(
   settings: Pick<
     AppSettings,

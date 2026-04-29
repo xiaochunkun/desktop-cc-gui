@@ -11,6 +11,7 @@ import {
   sanitizeDarkThemePresetId,
   sanitizeLightThemePresetId,
   sanitizeThemePresetId,
+  shouldApplyCustomThemePresetTokens,
 } from "./themePreset";
 
 const baseSettings = {
@@ -79,6 +80,14 @@ describe("themePreset", () => {
     expect(nextSettings.customThemePresetId).toBe("vscode-one-dark-pro");
     expect(nextSettings.lightThemePresetId).toBe("vscode-light-modern");
     expect(nextSettings.darkThemePresetId).toBe("vscode-dark-modern");
+  });
+
+  it("only applies preset tokens for the custom theme mode", () => {
+    expect(shouldApplyCustomThemePresetTokens("custom")).toBe(true);
+    expect(shouldApplyCustomThemePresetTokens("dark")).toBe(false);
+    expect(shouldApplyCustomThemePresetTokens("light")).toBe(false);
+    expect(shouldApplyCustomThemePresetTokens("system")).toBe(false);
+    expect(shouldApplyCustomThemePresetTokens("dim")).toBe(false);
   });
 
   it("returns all preset options for the custom theme picker", () => {
