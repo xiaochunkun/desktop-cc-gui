@@ -190,3 +190,83 @@ i18n：
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Claude reasoning effort 路由修复（resolvedEffort 不再被强制清零）
+
+**Date**: 2026-04-30
+**Task**: Claude reasoning effort 路由修复（resolvedEffort 不再被强制清零）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 任务目标
+修复 Claude provider 选了思考强度但 reclaude 实际拿不到的 bug。
+用户在 ChatInputBox 选"最多"(xhigh) 后 /status 仍显示 medium，
+本次定位并修复 wiring 死角。
+
+## 根因
+`src/app-shell-parts/modelSelection.ts:67-72` 的 getEffectiveReasoningSupported
+用三元短路：
+    return activeEngine === "codex" ? codexReasoningSupported : false;
+Claude 永远命中 false 分支。app-shell.tsx:910 据此设：
+    resolvedEffort = effectiveReasoningSupported ? selectedEffort : null;
+Claude 时 resolvedEffort 被强制为 null，传到 useThreadMessaging →
+engineSendMessage → backend SendMessageParams.effort = None →
+ClaudeSession.build_command 跳过 --effort 追加。
+selector 显示"最多"是因为它读 selectedEffort 原始 state，不受影响；
+但发送链路用的是 resolvedEffort，这才是给 reclaude 的实际值。
+
+证据链：用户实测 `reclaude --effort max` 命令行直接生效，--help
+也明确列出 --effort low|medium|high|xhigh|max；说明 reclaude 协议
+正确，问题在 ccgui 没真正传出去。
+
+## 改动
+- `modelSelection.ts`：getEffectiveReasoningSupported 加 claude 分支，
+  无条件返回 true（Claude CLI 不依赖 model metadata 的
+  supportedReasoningEfforts，CLI 原生暴露 --effort）
+- `modelSelection.test.ts`：补 6 条断言覆盖 codex true/false、claude
+  true/false、gemini、opencode
+
+## 验证
+- vitest run modelSelection.test.ts：9 tests passed
+- npm run typecheck：通过
+
+## 后续事项
+- 用户需重新构建 setup.exe 安装验证（前端改动需重打前端 + 重嵌
+  Tauri 资源）
+- 验证步骤：Claude provider 下选不同档位发消息 → /status 应反映
+  对应档位（reasoning low/xhigh/max）
+- 若仍显示 medium，下一步排查方向：
+  1. PowerShell 抓 reclaude 子进程命令行确认 --effort 是否真
+     出现在 args 里
+  2. 检查 selectedEffort 是否被 useModels 在 Claude 切换时 reset
+
+## 关联前序工作
+- session 1：fix(engine) 让 claudeBin 设置实时同步到运行时（commit 20243cfd）
+- session 2：feat(engine) Claude 接入思考强度选择（commit fcb4aca4）
+本次 (session 3) 是 session 2 的关键 follow-up——前两次让"UI 出现 +
+后端能接 --effort"，本次让"selector 当前值真的能流到后端"。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `774ca0a6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
