@@ -14,9 +14,18 @@ impl ClaudeSessionManager {
         }
     }
 
-    /// Set default configuration
+    /// Set default configuration and hot-swap it onto every existing session
+    /// so already-created Claude sessions also pick up the new binary path /
+    /// home dir / extra args without being torn down. The next `send_message`
+    /// call on each session will read the new config; turns currently in
+    /// flight finish with the previous binary (their child process is already
+    /// spawned, which is the safe behavior).
     pub async fn set_config(&self, config: EngineConfig) {
-        *self.default_config.write().await = config;
+        *self.default_config.write().await = config.clone();
+        let sessions = self.sessions.lock().await;
+        for session in sessions.values() {
+            session.update_runtime_config(&config);
+        }
     }
 
     /// Get or create a session for a workspace

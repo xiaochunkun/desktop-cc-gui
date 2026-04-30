@@ -130,12 +130,12 @@ pub struct ClaudeSession {
     session_id: RwLock<Option<String>>,
     /// Event broadcaster
     event_sender: broadcast::Sender<ClaudeTurnEvent>,
-    /// Custom binary path
-    bin_path: Option<String>,
-    /// Custom home directory
-    home_dir: Option<String>,
-    /// Additional CLI arguments
-    custom_args: Option<String>,
+    /// Custom binary path (hot-swappable when settings change)
+    bin_path: StdMutex<Option<String>>,
+    /// Custom home directory (hot-swappable when settings change)
+    home_dir: StdMutex<Option<String>>,
+    /// Additional CLI arguments (hot-swappable when settings change)
+    custom_args: StdMutex<Option<String>>,
     /// Active child processes by turn ID (supports concurrent turns)
     active_processes: Mutex<HashMap<String, Child>>,
     /// Flag set by interrupt() so send_message() knows the process was killed intentionally
@@ -219,9 +219,9 @@ impl ClaudeSession {
             workspace_path,
             session_id: RwLock::new(None),
             event_sender,
-            bin_path: config.bin_path,
-            home_dir: config.home_dir,
-            custom_args: config.custom_args,
+            bin_path: StdMutex::new(config.bin_path),
+            home_dir: StdMutex::new(config.home_dir),
+            custom_args: StdMutex::new(config.custom_args),
             active_processes: Mutex::new(HashMap::new()),
             interrupted: AtomicBool::new(false),
             disposed: AtomicBool::new(false),
@@ -329,8 +329,13 @@ impl ClaudeSession {
         // 1. Use custom bin_path if configured
         // 2. Otherwise use find_cli_binary() to search npm global, cargo, etc.
         // 3. Fall back to bare "claude" as last resort
-        let bin = if let Some(ref custom) = self.bin_path {
-            custom.clone()
+        let custom_bin = self
+            .bin_path
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        let bin = if let Some(custom) = custom_bin {
+            custom
         } else {
             crate::backend::app_server::find_cli_binary("claude", None)
                 .map(|p| p.to_string_lossy().to_string())
@@ -427,7 +432,12 @@ impl ClaudeSession {
         }
 
         // Custom arguments
-        if let Some(ref args) = self.custom_args {
+        let custom_args = self
+            .custom_args
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        if let Some(args) = custom_args {
             for arg in args.split_whitespace() {
                 cmd.arg(arg);
             }
@@ -440,11 +450,31 @@ impl ClaudeSession {
         cmd.stderr(Stdio::piped());
 
         // Environment
-        if let Some(ref home) = self.home_dir {
+        let home_dir = self
+            .home_dir
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        if let Some(home) = home_dir {
             cmd.env("CLAUDE_HOME", home);
         }
 
         cmd
+    }
+
+    /// Hot-swap runtime config (called when settings change so existing
+    /// sessions pick up the new binary / home dir / extra args without
+    /// being torn down).
+    pub fn update_runtime_config(&self, config: &EngineConfig) {
+        if let Ok(mut guard) = self.bin_path.lock() {
+            *guard = config.bin_path.clone();
+        }
+        if let Ok(mut guard) = self.home_dir.lock() {
+            *guard = config.home_dir.clone();
+        }
+        if let Ok(mut guard) = self.custom_args.lock() {
+            *guard = config.custom_args.clone();
+        }
     }
 
     /// Send a message and stream the response

@@ -99,6 +99,28 @@ async fn spawn_reloaded_codex_sessions(
     Ok(staged_sessions)
 }
 
+/// Push the current Claude binary / args overrides from AppSettings into the
+/// engine runtime so `ClaudeSession.build_command` actually sees them. Without
+/// this the settings UI silently writes to disk only and the engine keeps
+/// resolving `claude` from PATH (breaking custom wrappers like `reclaude`).
+pub(crate) async fn sync_claude_engine_config(state: &AppState, settings: &AppSettings) {
+    let bin_path = settings
+        .claude_bin
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut cfg = state
+        .engine_manager
+        .get_engine_config(crate::engine::EngineType::Claude)
+        .await
+        .unwrap_or_default();
+    cfg.bin_path = bin_path;
+    state
+        .engine_manager
+        .set_engine_config(crate::engine::EngineType::Claude, cfg)
+        .await;
+}
+
 #[tauri::command]
 pub(crate) async fn get_app_settings(
     state: State<'_, AppState>,
@@ -119,6 +141,7 @@ pub(crate) async fn update_app_settings(
     let previous = state.app_settings.lock().await.clone();
     let updated =
         update_app_settings_core(settings, &state.app_settings, &state.settings_path).await?;
+    sync_claude_engine_config(&state, &updated).await;
     if app_settings_change_requires_codex_restart(&previous, &updated) {
         let auto_compaction_threshold_percent =
             f64::from(updated.codex_auto_compaction_threshold_percent);

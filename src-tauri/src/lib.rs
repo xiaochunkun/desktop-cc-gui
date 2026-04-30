@@ -128,6 +128,19 @@ pub fn run() {
             let state = state::AppState::load(&app.handle());
             app.manage(state);
             {
+                // Bootstrap engine configs from persisted AppSettings so the
+                // very first `send_message` after cold start respects values
+                // like `claudeBin` (e.g. when the user points at a wrapper
+                // such as `reclaude`). Without this the engine starts with
+                // EngineConfig::default() and silently falls back to PATH.
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = app_handle.state::<state::AppState>();
+                    let settings = state.app_settings.lock().await.clone();
+                    crate::settings::sync_claude_engine_config(&state, &settings).await;
+                });
+            }
+            {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     loop {
