@@ -1,33 +1,44 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { REASONING_LEVELS, type ReasoningEffort } from '../types';
+import { REASONING_LEVELS, type ProviderId, type ReasoningEffort } from '../types';
 
 interface ReasoningSelectProps {
   value: ReasoningEffort;
   onChange: (effort: ReasoningEffort) => void;
   disabled?: boolean;
+  /** Filter levels by provider availability. Falls back to all levels when omitted. */
+  providerId?: ProviderId;
 }
 
 /**
- * ReasoningSelect - Codex Reasoning Effort Selector
- * Controls the depth of reasoning for Codex models
- * Options: Minimal, Low, Medium (default), High
+ * ReasoningSelect - Reasoning Effort Selector (Codex + Claude)
+ * Levels are filtered by provider availability (see REASONING_LEVELS.availableFor).
  */
-export const ReasoningSelect = ({ value, onChange, disabled }: ReasoningSelectProps) => {
+export const ReasoningSelect = ({ value, onChange, disabled, providerId }: ReasoningSelectProps) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const fallbackLevel = REASONING_LEVELS[1] ?? REASONING_LEVELS[0] ?? {
+
+  const visibleLevels = useMemo(
+    () =>
+      providerId
+        ? REASONING_LEVELS.filter(level => level.availableFor.includes(providerId))
+        : REASONING_LEVELS,
+    [providerId],
+  );
+
+  const fallbackLevel = visibleLevels[1] ?? visibleLevels[0] ?? REASONING_LEVELS[1] ?? REASONING_LEVELS[0] ?? {
     id: 'medium' as ReasoningEffort,
     label: 'Medium',
     icon: 'codicon-circle-filled',
     description: 'Balanced thinking (default)',
+    availableFor: ['claude', 'codex'] as ProviderId[],
   };
 
   const currentLevel =
-    REASONING_LEVELS.find(l => l.id === value) ??
-    REASONING_LEVELS[2] ??
+    visibleLevels.find(l => l.id === value) ??
+    visibleLevels[2] ??
     fallbackLevel;
 
   /**
@@ -109,7 +120,7 @@ export const ReasoningSelect = ({ value, onChange, disabled }: ReasoningSelectPr
             zIndex: 10000,
           }}
         >
-          {REASONING_LEVELS.map((level) => (
+          {visibleLevels.map((level) => (
             <div
               key={level.id}
               className={`selector-option ${level.id === value ? 'selected' : ''}`}

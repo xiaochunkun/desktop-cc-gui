@@ -2041,6 +2041,10 @@ const enPart2 = {
       label: "Max",
       description: "Maximum reasoning depth",
     },
+    max: {
+      label: "Extreme",
+      description: "Highest reasoning effort (Claude only)",
+    },
   },
 
   // Providers

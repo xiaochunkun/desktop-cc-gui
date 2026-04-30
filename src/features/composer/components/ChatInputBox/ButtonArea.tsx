@@ -467,8 +467,12 @@ export const ButtonArea = ({
           }
           isRefreshingConfig={Boolean(isModelConfigRefreshing)}
         />
-        {currentProvider === 'codex' && (
-          <ReasoningSelect value={reasoningEffort} onChange={onReasoningChange ?? NOOP_REASONING} />
+        {(currentProvider === 'codex' || currentProvider === 'claude') && (
+          <ReasoningSelect
+            value={reasoningEffort}
+            onChange={onReasoningChange ?? NOOP_REASONING}
+            providerId={currentProvider}
+          />
         )}
         {currentProvider === 'codex' && isPlanModeEnabled && (
           <button

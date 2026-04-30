@@ -482,7 +482,7 @@ pub struct EngineFeatures {
 impl EngineFeatures {
     pub fn claude() -> Self {
         Self {
-            reasoning_effort: false,
+            reasoning_effort: true,
             collaboration_mode: false,
             image_input: true,
             session_resume: true,

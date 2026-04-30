@@ -183,7 +183,7 @@ impl EngineFeatures {
     /// Features for Claude Code
     pub fn claude() -> Self {
         Self {
-            reasoning_effort: false, // Claude doesn't have reasoning effort levels
+            reasoning_effort: true, // Claude CLI exposes --effort low|medium|high|xhigh|max
             collaboration_mode: false,
             image_input: true,
             session_resume: true,
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn engine_features_defaults() {
         let claude = EngineFeatures::claude();
-        assert!(!claude.reasoning_effort);
+        assert!(claude.reasoning_effort);
         assert!(claude.image_input);
         assert!(claude.session_resume);
 

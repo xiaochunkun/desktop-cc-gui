@@ -402,6 +402,17 @@ impl ClaudeSession {
             cmd.arg(model);
         }
 
+        // Reasoning effort: Claude CLI flag --effort accepts low|medium|high|xhigh|max
+        if let Some(effort) = params
+            .effort
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            cmd.arg("--effort");
+            cmd.arg(effort);
+        }
+
         // Session continuation / explicit session identity
         if params.continue_session {
             if let Some(ref session_id) = params.session_id {

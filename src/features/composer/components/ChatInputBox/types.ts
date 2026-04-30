@@ -358,11 +358,11 @@ export const AVAILABLE_PROVIDERS: ProviderInfo[] = [
 ];
 
 /**
- * Codex Reasoning Effort (thinking depth)
- * Controls the depth of reasoning for Codex models
- * Valid values: low, medium, high, xhigh
+ * Reasoning Effort (thinking depth)
+ * - Codex CLI: low | medium | high | xhigh
+ * - Claude CLI: low | medium | high | xhigh | max
  */
-export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+export type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * Reasoning level information
@@ -372,10 +372,12 @@ export interface ReasoningInfo {
   label: string;
   icon: string;
   description?: string;
+  /** Providers that accept this level. UI hides levels not in this list. */
+  availableFor: ProviderId[];
 }
 
 /**
- * Available reasoning levels for Codex
+ * Available reasoning levels (per-provider availability is checked at render time).
  */
 export const REASONING_LEVELS: ReasoningInfo[] = [
   {
@@ -383,24 +385,35 @@ export const REASONING_LEVELS: ReasoningInfo[] = [
     label: 'Low',
     icon: 'codicon-circle-small',
     description: 'Quick responses with basic reasoning',
+    availableFor: ['claude', 'codex'],
   },
   {
     id: 'medium',
     label: 'Medium',
     icon: 'codicon-circle-filled',
     description: 'Balanced thinking (default)',
+    availableFor: ['claude', 'codex'],
   },
   {
     id: 'high',
     label: 'High',
     icon: 'codicon-circle-large-filled',
     description: 'Deep reasoning for complex tasks',
+    availableFor: ['claude', 'codex'],
   },
   {
     id: 'xhigh',
     label: 'Max',
     icon: 'codicon-flame',
     description: 'Maximum reasoning depth',
+    availableFor: ['claude', 'codex'],
+  },
+  {
+    id: 'max',
+    label: 'Extreme',
+    icon: 'codicon-rocket',
+    description: 'Highest reasoning effort (Claude only)',
+    availableFor: ['claude'],
   },
 ];
 

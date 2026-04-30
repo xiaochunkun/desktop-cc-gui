@@ -2009,6 +2009,10 @@ const zhPart2 = {
       label: "最多",
       description: "最深推理，最高精度",
     },
+    max: {
+      label: "极深",
+      description: "最高强度推理（仅 Claude）",
+    },
   },
 
   // 供应商
