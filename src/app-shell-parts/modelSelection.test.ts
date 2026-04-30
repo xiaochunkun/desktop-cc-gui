@@ -115,8 +115,12 @@ describe("modelSelection", () => {
     ).toBe("engine-default");
   });
 
-  it("exposes reasoning support only for codex", () => {
+  it("exposes reasoning support for codex (gated by model) and claude (always)", () => {
     expect(getEffectiveReasoningSupported("codex", true)).toBe(true);
+    expect(getEffectiveReasoningSupported("codex", false)).toBe(false);
+    expect(getEffectiveReasoningSupported("claude", true)).toBe(true);
+    expect(getEffectiveReasoningSupported("claude", false)).toBe(true);
     expect(getEffectiveReasoningSupported("gemini", true)).toBe(false);
+    expect(getEffectiveReasoningSupported("opencode", true)).toBe(false);
   });
 });

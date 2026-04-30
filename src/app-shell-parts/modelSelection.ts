@@ -68,5 +68,9 @@ export function getEffectiveReasoningSupported(
   activeEngine: EngineType,
   codexReasoningSupported: boolean,
 ) {
-  return activeEngine === "codex" ? codexReasoningSupported : false;
+  if (activeEngine === "codex") return codexReasoningSupported;
+  // Claude CLI exposes --effort low|medium|high|xhigh|max regardless of
+  // model metadata, so reasoning UI is always supported for Claude sessions.
+  if (activeEngine === "claude") return true;
+  return false;
 }
